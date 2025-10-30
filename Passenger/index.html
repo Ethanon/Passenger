@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bus Passenger Notes</title>
+    <link rel="stylesheet" href="styles/main.css">
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <script src="lib/sql-wasm.js"></script>
+</head>
+<body>
+    <div id="app">
+        <div id="auth-container" class="auth-container">
+            <div class="auth-card">
+                <h1>Bus Passenger Notes</h1>
+                <p>Sign in with Google to access your notes</p>
+                <div id="google-signin"></div>
+            </div>
+        </div>
+
+        <div id="main-container" class="main-container hidden">
+            <header class="app-header">
+                <div class="header-controls">
+                    <input type="date" id="date-selector" class="date-selector">
+                    <div class="trip-selector">
+                        <button id="am-button" class="trip-button active">AM</button>
+                        <button id="pm-button" class="trip-button">PM</button>
+                    </div>
+                    <button id="manage-passengers-button" class="manage-button">Manage Passengers</button>
+                    <button id="settings-button" class="settings-button" title="Settings">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path>
+                            <circle cx="12" cy="12" r="3"></circle>
+                        </svg>
+                    </button>
+                </div>
+                <div class="sync-status">
+                    <span id="sync-indicator" class="sync-indicator"></span>
+                </div>
+            </header>
+
+            <main id="passenger-list-container" class="passenger-list-container">
+            </main>
+        </div>
+
+        <div id="passenger-manager-modal" class="modal hidden">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2>Manage Passengers</h2>
+                    <button id="close-modal" class="close-button">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="passenger-actions">
+                        <button id="add-passenger-button" class="action-button">Add New Passenger</button>
+                        <button id="show-hidden-button" class="action-button">Show Hidden Passengers</button>
+                    </div>
+                    <div id="passenger-manager-list" class="passenger-manager-list">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module" src="js/main.js"></script>
+</body>
+</html>
