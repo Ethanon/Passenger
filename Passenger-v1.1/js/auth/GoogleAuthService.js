@@ -5,6 +5,8 @@ export class GoogleAuthService {
         this.tokenExpiresAt = null;
         this.onAuthStateChanged = null;
         this.buttonContainer = null;
+        this.renderAttempts = 0;
+        this.maxRenderAttempts = 5;
     }
 
     Initialize(clientId, onAuthStateChanged) {
@@ -12,28 +14,60 @@ export class GoogleAuthService {
         this.onAuthStateChanged = onAuthStateChanged;
         this.buttonContainer = document.getElementById('google-signin');
         
-        google.accounts.id.initialize({
-            client_id: this.clientId,
-            callback: (response) => this.HandleCredentialResponse(response),
-            auto_select: false
-        });
+        this.ShowLoadingState();
+        this.WaitForGoogleScript();
+    }
 
-        this.RenderButton();
+    WaitForGoogleScript() {
+        if (typeof google !== 'undefined' && google.accounts && google.accounts.id) {
+            google.accounts.id.initialize({
+                client_id: this.clientId,
+                callback: (response) => this.HandleCredentialResponse(response),
+                auto_select: false
+            });
+            this.RenderButton();
+        } else if (this.renderAttempts < this.maxRenderAttempts) {
+            this.renderAttempts++;
+            setTimeout(() => this.WaitForGoogleScript(), 500);
+        } else {
+            this.ShowErrorState();
+        }
+    }
+
+    ShowLoadingState() {
+        if (!this.buttonContainer) return;
+        this.buttonContainer.innerHTML = '<div class="auth-loading">Initializing sign-in...</div>';
+    }
+
+    ShowErrorState() {
+        if (!this.buttonContainer) return;
+        this.buttonContainer.innerHTML = `
+            <div class="auth-error">
+                <p>Unable to load Google Sign-In</p>
+                <button onclick="location.reload()" class="retry-button">Retry</button>
+            </div>
+        `;
     }
 
     RenderButton() {
-        if (!this.buttonContainer) {
-            return;
-        }
+        if (!this.buttonContainer) return;
 
-        // Clear any existing button content
         this.buttonContainer.innerHTML = '';
 
-        // Render the Google Sign-In button
-        google.accounts.id.renderButton(
-            this.buttonContainer,
-            { theme: 'outline', size: 'large', width: 250 }
-        );
+        try {
+            google.accounts.id.renderButton(
+                this.buttonContainer,
+                { theme: 'outline', size: 'large', width: 250 }
+            );
+        } catch (error) {
+            console.error('Failed to render Google Sign-In button:', error);
+            if (this.renderAttempts < this.maxRenderAttempts) {
+                this.renderAttempts++;
+                setTimeout(() => this.RenderButton(), 500);
+            } else {
+                this.ShowErrorState();
+            }
+        }
     }
 
     HandleCredentialResponse(response) {
