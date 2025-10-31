@@ -5,8 +5,10 @@ export class GoogleAuthService {
         this.tokenExpiresAt = null;
         this.onAuthStateChanged = null;
         this.buttonContainer = null;
+        this.tokenClient = null;
         this.renderAttempts = 0;
         this.maxRenderAttempts = 5;
+        this.scopes = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.appdata https://www.googleapis.com/auth/userinfo.email';
     }
 
     Initialize(clientId, onAuthStateChanged) {
@@ -19,19 +21,24 @@ export class GoogleAuthService {
     }
 
     WaitForGoogleScript() {
-        if (typeof google !== 'undefined' && google.accounts && google.accounts.id) {
-            google.accounts.id.initialize({
-                client_id: this.clientId,
-                callback: (response) => this.HandleCredentialResponse(response),
-                auto_select: false
-            });
-            this.RenderButton();
+        if (typeof google !== 'undefined' && google.accounts && google.accounts.oauth2) {
+            this.InitializeOAuth();
         } else if (this.renderAttempts < this.maxRenderAttempts) {
             this.renderAttempts++;
             setTimeout(() => this.WaitForGoogleScript(), 500);
         } else {
             this.ShowErrorState();
         }
+    }
+
+    InitializeOAuth() {
+        this.tokenClient = google.accounts.oauth2.initTokenClient({
+            client_id: this.clientId,
+            scope: this.scopes,
+            callback: (response) => this.HandleTokenResponse(response)
+        });
+        
+        this.RenderButton();
     }
 
     ShowLoadingState() {
@@ -51,42 +58,37 @@ export class GoogleAuthService {
 
     RenderButton() {
         if (!this.buttonContainer) return;
-
+        
         this.buttonContainer.innerHTML = '';
-
-        try {
-            google.accounts.id.renderButton(
-                this.buttonContainer,
-                { theme: 'outline', size: 'large', width: 250 }
-            );
-        } catch (error) {
-            console.error('Failed to render Google Sign-In button:', error);
-            if (this.renderAttempts < this.maxRenderAttempts) {
-                this.renderAttempts++;
-                setTimeout(() => this.RenderButton(), 500);
-            } else {
-                this.ShowErrorState();
-            }
-        }
+        
+        const button = document.createElement('button');
+        button.className = 'google-signin-button';
+        button.textContent = 'Sign in with Google';
+        button.onclick = () => this.RequestToken();
+        
+        this.buttonContainer.appendChild(button);
     }
 
-    HandleCredentialResponse(response) {
-        try {
-            if (!response || !response.credential) {
-                console.error('Invalid credential response');
-                this.RenderButton();
-                return;
-            }
+    RequestToken() {
+        if (!this.tokenClient) {
+            console.error('GoogleAuth: Token client not initialized');
+            return;
+        }
+        
+        this.tokenClient.requestAccessToken({ prompt: '' });
+    }
 
-            this.accessToken = response.credential;
-            this.tokenExpiresAt = Date.now() + (3600 * 1000);
-            
-            if (this.onAuthStateChanged) {
-                this.onAuthStateChanged(true);
-            }
-        } catch (error) {
-            console.error('Error handling credential response:', error);
-            this.RenderButton();
+    HandleTokenResponse(response) {
+        if (response.error) {
+            console.error('GoogleAuth: Token error', response.error);
+            return;
+        }
+
+        this.accessToken = response.access_token;
+        this.tokenExpiresAt = Date.now() + (response.expires_in * 1000);
+        
+        if (this.onAuthStateChanged) {
+            this.onAuthStateChanged(true);
         }
     }
 
@@ -111,29 +113,36 @@ export class GoogleAuthService {
     }
 
     async RefreshToken() {
+        if (!this.tokenClient) return;
+        
         return new Promise((resolve) => {
-            google.accounts.id.prompt((notification) => {
-                if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
-                    this.SignOut();
+            this.tokenClient.requestAccessToken({ 
+                prompt: '',
+                callback: (response) => {
+                    if (response.error) {
+                        this.SignOut();
+                    }
+                    resolve();
                 }
-                resolve();
             });
         });
     }
 
     SignOut() {
+        if (this.accessToken) {
+            google.accounts.oauth2.revoke(this.accessToken, () => {
+                console.log('Token revoked');
+            });
+        }
+        
         this.accessToken = null;
         this.tokenExpiresAt = null;
-        google.accounts.id.disableAutoSelect();
         
         if (this.onAuthStateChanged) {
             this.onAuthStateChanged(false);
         }
 
-        // Re-render the button after sign out
-        setTimeout(() => {
-            this.RenderButton();
-        }, 100);
+        setTimeout(() => this.RenderButton(), 100);
     }
 
     GetAuthState() {
