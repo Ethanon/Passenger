@@ -12,12 +12,18 @@ export class GoogleDriveService {
         if (!token) return false;
 
         try {
+            const query = `name='${this.folderName}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
             const searchResponse = await fetch(
-                `https://www.googleapis.com/drive/v3/files?q=name='${this.folderName}' and mimeType='application/vnd.google-apps.folder' and trashed=false`,
+                `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}&spaces=drive`,
                 {
                     headers: { 'Authorization': `Bearer ${token}` }
                 }
             );
+
+            if (!searchResponse.ok) {
+                console.error('Folder search failed:', searchResponse.status);
+                return false;
+            }
 
             const searchData = await searchResponse.json();
             
@@ -41,6 +47,11 @@ export class GoogleDriveService {
                 }
             );
 
+            if (!createResponse.ok) {
+                console.error('Folder creation failed:', createResponse.status);
+                return false;
+            }
+
             const createData = await createResponse.json();
             this.folderId = createData.id;
             return true;
@@ -52,23 +63,34 @@ export class GoogleDriveService {
 
     async FindDatabaseFile() {
         const token = await this.authService.GetAccessToken();
-        if (!token || !this.folderId) return null;
+        if (!token) return null;
+
+        await this.EnsureFolderExists();
+        if (!this.folderId) return null;
 
         try {
+            const query = `name='${this.databaseFileName}' and '${this.folderId}' in parents and trashed=false`;
             const response = await fetch(
-                `https://www.googleapis.com/drive/v3/files?q=name='${this.databaseFileName}' and '${this.folderId}' in parents and trashed=false`,
+                `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}&spaces=drive&fields=files(id,name)`,
                 {
                     headers: { 'Authorization': `Bearer ${token}` }
                 }
             );
 
+            if (!response.ok) {
+                console.error('Database file search failed:', response.status);
+                return null;
+            }
+
             const data = await response.json();
             
             if (data.files && data.files.length > 0) {
                 this.databaseFileId = data.files[0].id;
+                console.log('Found database file:', this.databaseFileId);
                 return this.databaseFileId;
             }
 
+            console.log('No database file found in folder');
             return null;
         } catch (error) {
             console.error('Failed to find database file:', error);
