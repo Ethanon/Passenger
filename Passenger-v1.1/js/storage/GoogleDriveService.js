@@ -5,165 +5,162 @@ export class GoogleDriveService {
         this.databaseFileId = null;
         this.folderName = 'BusPassengerNotes';
         this.databaseFileName = 'passengers.db';
+        this.preferencesFileName = 'preferences.json';
+        this.driveApiBase = 'https://www.googleapis.com/drive/v3/files';
+        this.driveUploadBase = 'https://www.googleapis.com/upload/drive/v3/files';
+        this.multipartBoundary = '-------314159265358979323846';
+        this.sqliteMimeType = 'application/octet-stream';
+        this.jsonMimeType = 'application/json';
+        this.folderMimeType = 'application/vnd.google-apps.folder';
+    }
+
+    async AuthenticatedFetch(url, options = {}) {
+        const token = await this.authService.GetAccessToken();
+        if (!token) {
+            console.error('GoogleDrive: No access token');
+            return null;
+        }
+        
+        return await fetch(url, {
+            ...options,
+            headers: { 'Authorization': `Bearer ${token}`, ...options.headers }
+        });
     }
 
     async EnsureFolderExists() {
         const token = await this.authService.GetAccessToken();
         if (!token) return false;
 
-        try {
-            const query = `name='${this.folderName}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-            const searchResponse = await fetch(
-                `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}&spaces=drive`,
-                {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                }
-            );
+        const query = `name='${this.folderName}' and mimeType='${this.folderMimeType}' and trashed=false`;
+        const searchResponse = await this.AuthenticatedFetch(
+            `${this.driveApiBase}?q=${encodeURIComponent(query)}&spaces=drive`
+        );
 
-            if (!searchResponse.ok) {
-                console.error('Folder search failed:', searchResponse.status);
-                return false;
-            }
-
-            const searchData = await searchResponse.json();
-            
-            if (searchData.files && searchData.files.length > 0) {
-                this.folderId = searchData.files[0].id;
-                return true;
-            }
-
-            const createResponse = await fetch(
-                'https://www.googleapis.com/drive/v3/files',
-                {
-                    method: 'POST',
-                    headers: {
-                        'Authorization': `Bearer ${token}`,
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        name: this.folderName,
-                        mimeType: 'application/vnd.google-apps.folder'
-                    })
-                }
-            );
-
-            if (!createResponse.ok) {
-                console.error('Folder creation failed:', createResponse.status);
-                return false;
-            }
-
-            const createData = await createResponse.json();
-            this.folderId = createData.id;
+        if (!searchResponse?.ok) return false;
+        const searchData = await searchResponse.json();
+        
+        if (searchData.files?.length > 0) {
+            this.folderId = searchData.files[0].id;
             return true;
-        } catch (error) {
-            console.error('Failed to ensure folder exists:', error);
+        }
+
+        const createResponse = await this.AuthenticatedFetch(
+            this.driveApiBase,
+            {
+                method: 'POST',
+                headers: { 'Content-Type': this.jsonMimeType },
+                body: JSON.stringify({
+                    name: this.folderName,
+                    mimeType: this.folderMimeType
+                })
+            }
+        );
+
+        if (!createResponse?.ok) {
+            console.error('GoogleDrive: Folder creation failed', createResponse.status);
             return false;
         }
+        const createData = await createResponse.json();
+        this.folderId = createData.id;
+        return true;
     }
 
-    async FindDatabaseFile() {
-        const token = await this.authService.GetAccessToken();
-        if (!token) return null;
-
+    async FindFileInFolder(name) {
         await this.EnsureFolderExists();
         if (!this.folderId) return null;
 
-        try {
-            const query = `name='${this.databaseFileName}' and '${this.folderId}' in parents and trashed=false`;
-            const response = await fetch(
-                `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}&spaces=drive&fields=files(id,name)`,
-                {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                }
-            );
+        const query = `name='${name}' and '${this.folderId}' in parents and trashed=false`;
+        const response = await this.AuthenticatedFetch(
+            `${this.driveApiBase}?q=${encodeURIComponent(query)}&spaces=drive&fields=files(id,name)`
+        );
 
-            if (!response.ok) {
-                console.error('Database file search failed:', response.status);
-                return null;
-            }
+        if (!response?.ok) return null;
+        const data = await response.json();
+        return data.files?.[0]?.id || null;
+    }
 
-            const data = await response.json();
-            
-            if (data.files && data.files.length > 0) {
-                this.databaseFileId = data.files[0].id;
-                console.log('Found database file:', this.databaseFileId);
-                return this.databaseFileId;
-            }
+    async FindDatabaseFile() {
+        const fileId = await this.FindFileInFolder(this.databaseFileName);
+        if (fileId) this.databaseFileId = fileId;
+        return fileId;
+    }
 
-            console.log('No database file found in folder');
-            return null;
-        } catch (error) {
-            console.error('Failed to find database file:', error);
-            return null;
-        }
+    async DownloadFile(fileId) {
+        const response = await this.AuthenticatedFetch(
+            `${this.driveApiBase}/${fileId}?alt=media`
+        );
+        
+        if (!response?.ok) return null;
+        return await response.arrayBuffer();
+    }
+
+    IsValidSQLite(buffer) {
+        const bytes = new Uint8Array(buffer);
+        return bytes.length >= 16 && String.fromCharCode(...bytes.slice(0, 16)).startsWith('SQLite format 3');
     }
 
     async DownloadDatabase() {
-        const token = await this.authService.GetAccessToken();
-        if (!token) return null;
-
-        await this.EnsureFolderExists();
         const fileId = await this.FindDatabaseFile();
-        
         if (!fileId) return null;
-
-        try {
-            const response = await fetch(
-                `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`,
-                {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                }
-            );
-
-            if (!response.ok) return null;
-
-            const arrayBuffer = await response.arrayBuffer();
-            return arrayBuffer;
-        } catch (error) {
-            console.error('Failed to download database:', error);
+        
+        const buffer = await this.DownloadFile(fileId);
+        if (!buffer) {
+            console.error('GoogleDrive: Download failed for fileId', fileId);
             return null;
         }
+        
+        if (!this.IsValidSQLite(buffer)) {
+            console.error('GoogleDrive: Invalid SQLite file', { fileId, size: buffer.byteLength });
+            return null;
+        }
+        
+        return buffer;
+    }
+
+    async DownloadDatabaseById(fileId) {
+        const buffer = await this.DownloadFile(fileId);
+        return buffer && this.IsValidSQLite(buffer) ? buffer : null;
+    }
+
+    ArrayBufferToBase64(buffer) {
+        return btoa(String.fromCharCode(...new Uint8Array(buffer)));
+    }
+
+    BuildMultipartBody(boundary, metadata, buffer) {
+        return `\r\n--${boundary}\r\n` +
+               `Content-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n--${boundary}\r\n` +
+               `Content-Type: application/octet-stream\r\nContent-Transfer-Encoding: base64\r\n\r\n` +
+               `${this.ArrayBufferToBase64(buffer)}\r\n--${boundary}--`;
     }
 
     async UploadDatabase(databaseBuffer) {
-        const token = await this.authService.GetAccessToken();
-        if (!token) return false;
-
         await this.EnsureFolderExists();
+        if (!this.folderId) return false;
         
-        try {
-            const metadata = {
-                name: this.databaseFileName,
-                mimeType: 'application/x-sqlite3',
-                parents: [this.folderId]
-            };
-
-            const form = new FormData();
-            form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
-            form.append('file', new Blob([databaseBuffer], { type: 'application/x-sqlite3' }));
-
-            const fileId = await this.FindDatabaseFile();
-            const url = fileId
-                ? `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=multipart`
-                : 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart';
-
-            const method = fileId ? 'PATCH' : 'POST';
-
-            const response = await fetch(url, {
-                method: method,
-                headers: { 'Authorization': `Bearer ${token}` },
-                body: form
-            });
-
-            if (!response.ok) return false;
-
+        const fileId = await this.FindDatabaseFile();
+        const metadata = {
+            name: this.databaseFileName,
+            mimeType: this.sqliteMimeType,
+            parents: fileId ? undefined : [this.folderId]
+        };
+        
+        const response = await this.AuthenticatedFetch(
+            `${this.driveUploadBase}${fileId ? `/${fileId}` : ''}?uploadType=multipart`,
+            {
+                method: fileId ? 'PATCH' : 'POST',
+                headers: { 'Content-Type': `multipart/related; boundary=${this.multipartBoundary}` },
+                body: this.BuildMultipartBody(this.multipartBoundary, metadata, databaseBuffer)
+            }
+        );
+        
+        if (response?.ok) {
             const data = await response.json();
             this.databaseFileId = data.id;
             return true;
-        } catch (error) {
-            console.error('Failed to upload database:', error);
-            return false;
         }
+        
+        console.error('GoogleDrive: Upload failed', { status: response?.status, size: databaseBuffer.byteLength });
+        return false;
     }
 
     async SyncDatabase(databaseBuffer) {
@@ -171,142 +168,59 @@ export class GoogleDriveService {
     }
 
     async FindPreferencesFile() {
-        const token = await this.authService.GetAccessToken();
-        if (!token || !this.folderId) return null;
-
-        try {
-            const response = await fetch(
-                `https://www.googleapis.com/drive/v3/files?q=name='preferences.json' and '${this.folderId}' in parents and trashed=false`,
-                {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                }
-            );
-
-            const data = await response.json();
-            return data.files && data.files.length > 0 ? data.files[0].id : null;
-        } catch (error) {
-            console.error('Failed to find preferences file:', error);
-            return null;
-        }
+        return await this.FindFileInFolder(this.preferencesFileName);
     }
 
     async DownloadPreferences(fileId) {
-        const token = await this.authService.GetAccessToken();
-        if (!token) return null;
-
-        try {
-            const response = await fetch(
-                `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`,
-                {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                }
-            );
-
-            if (!response.ok) return null;
-            return await response.text();
-        } catch (error) {
-            console.error('Failed to download preferences:', error);
-            return null;
-        }
+        const response = await this.AuthenticatedFetch(
+            `${this.driveApiBase}/${fileId}?alt=media`
+        );
+        
+        return response?.ok ? await response.text() : null;
     }
 
     async UploadPreferences(content, fileId = null) {
-        const token = await this.authService.GetAccessToken();
-        if (!token) return false;
-
         await this.EnsureFolderExists();
+        if (!this.folderId) return false;
 
-        try {
-            const metadata = {
-                name: 'preferences.json',
-                mimeType: 'application/json',
-                parents: [this.folderId]
-            };
+        const metadata = {
+            name: this.preferencesFileName,
+            mimeType: this.jsonMimeType,
+            parents: [this.folderId]
+        };
 
-            const form = new FormData();
-            form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
-            form.append('file', new Blob([content], { type: 'application/json' }));
+        const form = new FormData();
+        form.append('metadata', new Blob([JSON.stringify(metadata)], { type: this.jsonMimeType }));
+        form.append('file', new Blob([content], { type: this.jsonMimeType }));
 
-            const url = fileId
-                ? `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=multipart`
-                : 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart';
-
-            const method = fileId ? 'PATCH' : 'POST';
-
-            const response = await fetch(url, {
-                method: method,
-                headers: { 'Authorization': `Bearer ${token}` },
+        const response = await this.AuthenticatedFetch(
+            `${this.driveUploadBase}${fileId ? `/${fileId}` : ''}?uploadType=multipart`,
+            {
+                method: fileId ? 'PATCH' : 'POST',
                 body: form
-            });
+            }
+        );
 
-            return response.ok;
-        } catch (error) {
-            console.error('Failed to upload preferences:', error);
-            return false;
-        }
+        return response?.ok || false;
     }
 
     async ListDatabaseFiles() {
-        const token = await this.authService.GetAccessToken();
-        if (!token) return [];
+        const response = await this.AuthenticatedFetch(
+            `${this.driveApiBase}?q=mimeType='application/x-sqlite3' or name contains '.db'&fields=files(id,name,modifiedTime,owners)`
+        );
 
-        try {
-            const response = await fetch(
-                `https://www.googleapis.com/drive/v3/files?q=mimeType='application/x-sqlite3' or name contains '.db'&fields=files(id,name,modifiedTime,owners)`,
-                {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                }
-            );
-
-            const data = await response.json();
-            return data.files || [];
-        } catch (error) {
-            console.error('Failed to list database files:', error);
-            return [];
-        }
-    }
-
-    async DownloadDatabaseById(fileId) {
-        const token = await this.authService.GetAccessToken();
-        if (!token) return null;
-
-        try {
-            const response = await fetch(
-                `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`,
-                {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                }
-            );
-
-            if (!response.ok) return null;
-
-            const arrayBuffer = await response.arrayBuffer();
-            return arrayBuffer;
-        } catch (error) {
-            console.error('Failed to download database by ID:', error);
-            return null;
-        }
+        if (!response?.ok) return [];
+        const data = await response.json();
+        return data.files || [];
     }
 
     async GetFileName(fileId) {
-        const token = await this.authService.GetAccessToken();
-        if (!token) return '';
+        const response = await this.AuthenticatedFetch(
+            `${this.driveApiBase}/${fileId}?fields=name`
+        );
 
-        try {
-            const response = await fetch(
-                `https://www.googleapis.com/drive/v3/files/${fileId}?fields=name`,
-                {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                }
-            );
-
-            if (!response.ok) return '';
-
-            const data = await response.json();
-            return data.name || '';
-        } catch (error) {
-            console.error('Failed to get file name:', error);
-            return '';
-        }
+        if (!response?.ok) return '';
+        const data = await response.json();
+        return data.name || '';
     }
 }
