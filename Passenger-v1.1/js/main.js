@@ -90,40 +90,45 @@ class Application {
     }
 
     async OnAuthenticated() {
-        this.ShowSyncStatus('Loading...');
+        this.ShowLoadingOverlay('Loading your data...');
         
-        this.driveService = new GoogleDriveService(this.authService);
-        this.preferencesService = new PreferencesService(this.driveService);
-        
-        await this.preferencesService.LoadPreferences();
-        
-        // Initialize and apply theme
-        this.themeManager = new ThemeManager(this.preferencesService);
-        this.themeManager.Initialize();
-        
-        const databaseFileId = this.preferencesService.GetDatabaseFileId();
-        const databaseBuffer = databaseFileId
-            ? await this.driveService.DownloadDatabaseById(databaseFileId)
-            : await this.driveService.DownloadDatabase();
+        try {
+            this.driveService = new GoogleDriveService(this.authService);
+            this.preferencesService = new PreferencesService(this.driveService);
             
-        await this.databaseService.Initialize(databaseBuffer);
+            await this.preferencesService.LoadPreferences();
+            
+            this.themeManager = new ThemeManager(this.preferencesService);
+            this.themeManager.Initialize();
+            
+            const databaseFileId = this.preferencesService.GetDatabaseFileId();
+            const databaseBuffer = databaseFileId
+                ? await this.driveService.DownloadDatabaseById(databaseFileId)
+                : await this.driveService.DownloadDatabase();
+                
+            await this.databaseService.Initialize(databaseBuffer);
 
-        this.passengerService = new PassengerService(this.databaseService);
-        this.noteService = new NoteService(this.databaseService, this.driveService);
+            this.passengerService = new PassengerService(this.databaseService);
+            this.noteService = new NoteService(this.databaseService, this.driveService);
 
-        this.InitializeUI();
-        this.ShowMainContainer();
-        this.LoadPassengers();
-        
-        // Wire up logout button
-        document.getElementById('logout-button').addEventListener('click', () => {
-            this.authService.SignOut();
-        });
-        
-        this.noteService.StartBackgroundSync();
-        this.StartSyncStatusMonitoring();
-        
-        this.ShowSyncStatus('Synced');
+            this.InitializeUI();
+            this.ShowMainContainer();
+            this.LoadPassengers();
+            
+            document.getElementById('logout-button').addEventListener('click', () => {
+                this.authService.SignOut();
+            });
+            
+            this.noteService.StartBackgroundSync();
+            this.StartSyncStatusMonitoring();
+            
+            this.ShowSyncStatus('Synced');
+        } catch (error) {
+            console.error('Failed to initialize application:', error);
+            this.ShowLoadingError('Failed to load data. Please try again.');
+        } finally {
+            this.HideLoadingOverlay();
+        }
     }
 
     InitializeUI() {
@@ -197,6 +202,44 @@ class Application {
             this.syncIndicator.classList.add('synced');
         } else if (status === 'Syncing...') {
             this.syncIndicator.classList.add('syncing');
+        }
+    }
+
+    ShowLoadingOverlay(message) {
+        let overlay = document.getElementById('loading-overlay');
+        if (!overlay) {
+            overlay = document.createElement('div');
+            overlay.id = 'loading-overlay';
+            overlay.className = 'loading-overlay';
+            overlay.innerHTML = `
+                <div class="loading-content">
+                    <div class="loading-spinner"></div>
+                    <div class="loading-message">${message}</div>
+                </div>
+            `;
+            document.body.appendChild(overlay);
+        } else {
+            overlay.querySelector('.loading-message').textContent = message;
+            overlay.classList.remove('hidden');
+        }
+    }
+
+    HideLoadingOverlay() {
+        const overlay = document.getElementById('loading-overlay');
+        if (overlay) {
+            overlay.classList.add('hidden');
+        }
+    }
+
+    ShowLoadingError(message) {
+        const overlay = document.getElementById('loading-overlay');
+        if (overlay) {
+            overlay.innerHTML = `
+                <div class="loading-content">
+                    <div class="loading-error">${message}</div>
+                    <button onclick="location.reload()" class="retry-button">Retry</button>
+                </div>
+            `;
         }
     }
 }
