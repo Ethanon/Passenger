@@ -3,7 +3,8 @@ export class LocalPreferencesService {
         this.preferencesKey = 'app-preferences';
         this.preferences = {
             currentDatabaseKey: 'bus-passenger-notes-db',
-            availableDatabases: []
+            availableDatabases: [],
+            theme: 'system'
         };
     }
 
@@ -90,5 +91,14 @@ export class LocalPreferencesService {
         });
         await this.SavePreferences();
         return key;
+    }
+
+    GetTheme() {
+        return this.preferences.theme || 'system';
+    }
+
+    async SetTheme(theme) {
+        this.preferences.theme = theme;
+        return await this.SavePreferences();
     }
 }

@@ -75,6 +75,7 @@ export class Dialog {
             input.className = 'dialog-input';
             input.value = defaultValue;
             input.placeholder = 'Enter value...';
+            input.autocomplete = 'off';
 
             const buttonContainer = document.createElement('div');
             buttonContainer.className = 'dialog-buttons';

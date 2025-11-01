@@ -6,7 +6,8 @@ export class PreferencesService {
         this.preferences = {
             databaseFileId: null,
             databaseFileName: 'passengers.db',
-            lastModified: null
+            lastModified: null,
+            theme: 'system'
         };
     }
 
@@ -74,6 +75,15 @@ export class PreferencesService {
     async ClearDatabasePreference() {
         this.preferences.databaseFileId = null;
         this.preferences.databaseFileName = 'passengers.db';
+        return await this.SavePreferences();
+    }
+
+    GetTheme() {
+        return this.preferences.theme || 'system';
+    }
+
+    async SetTheme(theme) {
+        this.preferences.theme = theme;
         return await this.SavePreferences();
     }
 }

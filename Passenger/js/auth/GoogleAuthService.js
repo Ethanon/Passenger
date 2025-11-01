@@ -4,27 +4,88 @@ export class GoogleAuthService {
         this.accessToken = null;
         this.tokenExpiresAt = null;
         this.onAuthStateChanged = null;
+        this.buttonContainer = null;
+        this.tokenClient = null;
+        this.renderAttempts = 0;
+        this.maxRenderAttempts = 5;
+        this.scopes = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.appdata https://www.googleapis.com/auth/userinfo.email';
     }
 
     Initialize(clientId, onAuthStateChanged) {
         this.clientId = clientId;
         this.onAuthStateChanged = onAuthStateChanged;
+        this.buttonContainer = document.getElementById('google-signin');
         
-        google.accounts.id.initialize({
-            client_id: this.clientId,
-            callback: (response) => this.HandleCredentialResponse(response),
-            auto_select: false
-        });
-
-        google.accounts.id.renderButton(
-            document.getElementById('google-signin'),
-            { theme: 'outline', size: 'large', width: 250 }
-        );
+        this.ShowLoadingState();
+        this.WaitForGoogleScript();
     }
 
-    HandleCredentialResponse(response) {
-        this.accessToken = response.credential;
-        this.tokenExpiresAt = Date.now() + (3600 * 1000);
+    WaitForGoogleScript() {
+        if (typeof google !== 'undefined' && google.accounts && google.accounts.oauth2) {
+            this.InitializeOAuth();
+        } else if (this.renderAttempts < this.maxRenderAttempts) {
+            this.renderAttempts++;
+            setTimeout(() => this.WaitForGoogleScript(), 500);
+        } else {
+            this.ShowErrorState();
+        }
+    }
+
+    InitializeOAuth() {
+        this.tokenClient = google.accounts.oauth2.initTokenClient({
+            client_id: this.clientId,
+            scope: this.scopes,
+            callback: (response) => this.HandleTokenResponse(response)
+        });
+        
+        this.RenderButton();
+    }
+
+    ShowLoadingState() {
+        if (!this.buttonContainer) return;
+        this.buttonContainer.innerHTML = '<div class="auth-loading">Initializing sign-in...</div>';
+    }
+
+    ShowErrorState() {
+        if (!this.buttonContainer) return;
+        this.buttonContainer.innerHTML = `
+            <div class="auth-error">
+                <p>Unable to load Google Sign-In</p>
+                <button onclick="location.reload()" class="retry-button">Retry</button>
+            </div>
+        `;
+    }
+
+    RenderButton() {
+        if (!this.buttonContainer) return;
+        
+        this.buttonContainer.innerHTML = '';
+        
+        const button = document.createElement('button');
+        button.className = 'google-signin-button';
+        button.textContent = 'Sign in with Google';
+        button.onclick = () => this.RequestToken();
+        
+        this.buttonContainer.appendChild(button);
+    }
+
+    RequestToken() {
+        if (!this.tokenClient) {
+            console.error('GoogleAuth: Token client not initialized');
+            return;
+        }
+        
+        this.tokenClient.requestAccessToken({ prompt: '' });
+    }
+
+    HandleTokenResponse(response) {
+        if (response.error) {
+            console.error('GoogleAuth: Token error', response.error);
+            return;
+        }
+
+        this.accessToken = response.access_token;
+        this.tokenExpiresAt = Date.now() + (response.expires_in * 1000);
         
         if (this.onAuthStateChanged) {
             this.onAuthStateChanged(true);
@@ -52,24 +113,38 @@ export class GoogleAuthService {
     }
 
     async RefreshToken() {
+        if (!this.tokenClient) return;
+        
         return new Promise((resolve) => {
-            google.accounts.id.prompt((notification) => {
-                if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
-                    this.SignOut();
+            this.tokenClient.requestAccessToken({ 
+                prompt: '',
+                callback: (response) => {
+                    if (response.error) {
+                        this.SignOut();
+                    } else {
+                        this.HandleTokenResponse(response);
+                    }
+                    resolve();
                 }
-                resolve();
             });
         });
     }
 
     SignOut() {
+        if (this.accessToken) {
+            google.accounts.oauth2.revoke(this.accessToken, () => {
+                console.log('Token revoked');
+            });
+        }
+        
         this.accessToken = null;
         this.tokenExpiresAt = null;
-        google.accounts.id.disableAutoSelect();
         
         if (this.onAuthStateChanged) {
             this.onAuthStateChanged(false);
         }
+
+        setTimeout(() => this.RenderButton(), 100);
     }
 
     GetAuthState() {

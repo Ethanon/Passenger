@@ -1,8 +1,9 @@
 import { Dialog } from './Dialog.js';
 
 export class PassengerManager {
-    constructor(passengerService, onPassengersChanged) {
+    constructor(passengerService, dataStoreService, onPassengersChanged) {
         this.passengerService = passengerService;
+        this.dataStoreService = dataStoreService;
         this.onPassengersChanged = onPassengersChanged;
         this.modal = document.getElementById('passenger-manager-modal');
         this.listContainer = document.getElementById('passenger-manager-list');
@@ -107,32 +108,57 @@ export class PassengerManager {
     async AddPassenger() {
         const name = await this.dialog.Prompt('Enter passenger name:');
         if (name) {
-            this.passengerService.AddPassenger(name);
-            this.Render();
+            const passenger = this.passengerService.AddPassenger(name);
+            if (passenger) {
+                this.dataStoreService.TriggerSync();
+                this.Render();
+            } else {
+                console.error('Failed to add passenger');
+            }
         }
     }
 
     async HidePassenger(passengerId) {
         const confirmed = await this.dialog.Confirm('Hide this passenger? Their notes will be preserved.');
         if (confirmed) {
-            this.passengerService.HidePassenger(passengerId);
-            this.Render();
+            const success = this.passengerService.HidePassenger(passengerId);
+            if (success) {
+                this.dataStoreService.TriggerSync();
+                this.Render();
+            } else {
+                console.error('Failed to hide passenger');
+            }
         }
     }
 
     UnhidePassenger(passengerId) {
-        this.passengerService.UnhidePassenger(passengerId);
-        this.Render();
+        const success = this.passengerService.UnhidePassenger(passengerId);
+        if (success) {
+            this.dataStoreService.TriggerSync();
+            this.Render();
+        } else {
+            console.error('Failed to unhide passenger');
+        }
     }
 
     MoveUp(passengerId) {
-        this.passengerService.MovePassengerUp(passengerId);
-        this.Render();
+        const success = this.passengerService.MovePassengerUp(passengerId);
+        if (success) {
+            this.dataStoreService.TriggerSync();
+            this.Render();
+        } else {
+            console.error('Failed to move passenger up');
+        }
     }
 
     MoveDown(passengerId) {
-        this.passengerService.MovePassengerDown(passengerId);
-        this.Render();
+        const success = this.passengerService.MovePassengerDown(passengerId);
+        if (success) {
+            this.dataStoreService.TriggerSync();
+            this.Render();
+        } else {
+            console.error('Failed to move passenger down');
+        }
     }
 
     ToggleHiddenPassengers() {

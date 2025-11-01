@@ -1,6 +1,6 @@
 export class PassengerList {
-    constructor(noteService) {
-        this.noteService = noteService;
+    constructor(dataStoreService) {
+        this.dataStoreService = dataStoreService;
         this.container = document.getElementById('passenger-list-container');
         this.currentDate = '';
         this.currentTrip = '';
@@ -35,7 +35,7 @@ export class PassengerList {
         nameLabel.textContent = passenger.name;
         nameLabel.setAttribute('for', `note-${passenger.id}`);
 
-        const note = this.noteService.GetNoteForPassenger(passenger.id, this.currentDate, this.currentTrip);
+        const note = this.dataStoreService.GetNoteForPassenger(passenger.id, this.currentDate, this.currentTrip);
         const noteText = note ? note.noteText : '';
 
         const textarea = document.createElement('textarea');
@@ -46,7 +46,7 @@ export class PassengerList {
         textarea.rows = 3;
 
         textarea.addEventListener('input', (e) => {
-            this.noteService.AutoSaveNote(
+            this.dataStoreService.AutoSaveNote(
                 passenger.id,
                 this.currentDate,
                 this.currentTrip,
@@ -67,7 +67,7 @@ export class PassengerList {
         this.passengers.forEach(passenger => {
             const textarea = document.getElementById(`note-${passenger.id}`);
             if (textarea) {
-                const note = this.noteService.GetNoteForPassenger(passenger.id, date, trip);
+                const note = this.dataStoreService.GetNoteForPassenger(passenger.id, date, trip);
                 textarea.value = note ? note.noteText : '';
             }
         });

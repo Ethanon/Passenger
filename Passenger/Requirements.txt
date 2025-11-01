@@ -1,62 +1,345 @@
-This application is a html page that I can host on my website. I need to be able to log into it via my google permissions, that should also give me access to reading and writing files in my google drive.
-
-It needs a database, the database is a list of passengers that ride on a bus. These passengers ride the same bus every day, and I occasionally need to add riders, or mark them as no longer riding the bus (hidden).
-
-Each passenger needs to have daily entries written about them, and I need two entries every single day (am and pm) trips.
-
-Once you are logged into the application, I need to have a date selector, and it should default to the current day. Although I can select a different day and see all of the entries for that day.
-
-At the top of the screen I want to be able to select AM or PM, and then I want the main view to show me the list of passengers with their names and text boxes where I can use my phone keyboard to either type or dictate the content of the text boxes. This will allow me to easily leave my notes for that passenger.
-
-This would auto save every entry to the database file saved to my google drive.
-
-The google drive files should be a simple SQLite database file, and it should have a few basic tables such as passengers with simple fields such as name, id, and order, and then a notes table that has the passenger id, the date, time of day (am/pm), and text field with the note content.
-
-At the top of the main page there should also be a button that pops up an view that allows me to manage my current passengers, and I can give them a name, and then order them, and move them up or down easily (up arrows or down arrows to change the position of the current order). Then when I close the view it will update my list of passengers for every day. There should be buttons to add new passengers, or re-add an existing (hidden) passenger.
-
-If I add a new passenger, then it will create a database entry for them. If I remove them, then it should just mark the passenger as hidden so it doesn't show up in my list, but I want to make sure the entries are still in the database. I can also add passengers that were hidden back to the list.
-
-I want the app to renew my sessions to google whenever it needs to so I can always be in sync with my database. On first connecting to my google profile, if a database doesn't exist we need to create a new database. And we should use the same name every time so that we can always check if the database exists and connect to it. So we may want to create a folder on the google drive to keep any relevant files. I would assume that the google drive would have the database file and a preferences file snice this application doesn't have any on phone cache.
-
-I want a clean architecture, this should be mostly an entirely client base javascript application. But I want there to be clear javascript files using proper class archiecture, SOLID design principles. And a separate file for any CSS styling that we use for the application. The application should support light and dark mode, and should look fairly modern.
-
 ================================================================================
-ARCHITECTURE DESIGN
+BUS PASSENGER NOTES APPLICATION - REQUIREMENTS & ARCHITECTURE
 ================================================================================
 
-Technology Stack:
+OVERVIEW
+--------
+This application is an HTML-based web application that can be hosted on any website. 
+It allows bus drivers/monitors to track daily notes for passengers riding a bus, 
+with data stored in Google Drive for persistence and accessibility across devices.
+
+IMPLEMENTATION STATUS LEGEND
+-----------------------------
+[IMPLEMENTED] - Feature is fully implemented and working
+[PENDING]     - Feature is planned but not yet implemented
+[IN PROGRESS] - Feature is currently being developed
+
+================================================================================
+USER REQUIREMENTS
+================================================================================
+
+AUTHENTICATION & ACCESS [IMPLEMENTED]
+--------------------------------------
+- Users must log in via Google OAuth to access the application
+- Google authentication provides access to read/write files in Google Drive
+- Session tokens should auto-refresh to maintain continuous access
+- Support for local testing mode without Google OAuth (for development)
+
+PASSENGER MANAGEMENT [IMPLEMENTED]
+-----------------------------------
+- Maintain a database of passengers who ride the bus daily
+- Each passenger has: name, unique ID, display order, and hidden status
+- Ability to add new passengers to the list
+- Ability to hide passengers (mark as no longer riding) without deleting data
+- Ability to restore previously hidden passengers back to active list
+- Ability to reorder passengers using up/down arrows
+- Passenger management accessible via dedicated modal/view
+- All passenger data persists in the database
+
+DAILY NOTE TAKING [IMPLEMENTED]
+--------------------------------
+- Record two entries per passenger per day: AM trip and PM trip
+- Date selector to choose which day to view/edit (defaults to current day)
+- AM/PM selector at top of screen to switch between morning and evening trips
+- Main view displays list of active passengers with text input fields
+- Text fields support both typing and voice dictation (phone keyboard)
+- Auto-save functionality for all note entries
+- Notes persist to database file in Google Drive
+- Ability to view historical notes by selecting past dates
+
+DATA PERSISTENCE [PARTIALLY IMPLEMENTED]
+-----------------------------------------
+Current Implementation:
+- All data stored in SQLite database file in Google Drive
+- Database file stored in dedicated folder: "BusPassengerNotes"
+- Default database filename: "passengers.db"
+- Automatic database creation on first login if it doesn't exist
+- Background sync to Google Drive (every 30 seconds if changes exist)
+- User preferences stored in "preferences.json" in same folder
+- Support for selecting different database files (enables sharing)
+- Local storage mode for testing without Google Drive
+
+Pending Enhancements:
+- [PENDING] Replace localStorage with IndexedDB for better binary data support
+- [PENDING] Store database as Uint8Array with metadata (timestamps, counts)
+- [PENDING] Fix Google Drive binary upload/download issues
+- [PENDING] Implement change-based sync with dirty flag (instead of time-based)
+- [PENDING] Check dirty flag every 10 seconds and sync when changes exist
+
+USER INTERFACE [IMPLEMENTED]
+-----------------------------
+- Clean, modern design suitable for mobile devices
+- Support for light mode and dark mode
+- System theme detection with manual override option
+- Touch-friendly interface for mobile use
+- Responsive layout that works on phones and tablets
+- Visual feedback for all user actions
+- Custom dialogs that cannot be blocked by browser
+
+SETTINGS & PREFERENCES [PARTIALLY IMPLEMENTED]
+-----------------------------------------------
+Current Implementation:
+- Settings accessible via gear icon in header
+- Theme selection (System/Light/Dark)
+- Database selection and switching
+- View current database name
+- Reset to default database option
+- Preferences persist across sessions
+
+Pending Enhancements:
+- [PENDING] Mode-specific settings (LOCAL vs CLOUD)
+- [PENDING] Last sync time display (CLOUD mode)
+- [PENDING] Force immediate sync button (CLOUD mode)
+- [PENDING] Enable/disable cloud sync toggle
+- [PENDING] Reset local database button (LOCAL mode)
+- [PENDING] Reset and re-download from cloud button (CLOUD mode)
+
+================================================================================
+SMART MERGE SYNC REQUIREMENTS [PENDING]
+================================================================================
+
+STORAGE ARCHITECTURE [PENDING]
+-------------------------------
+IndexedDB Implementation:
+- Replace localStorage with IndexedDB for database persistence
+- Store SQLite database as Uint8Array (binary data)
+- Store metadata: last modified timestamp, passenger count, note count
+- Provide ability to completely delete local database when needed
+
+Google Drive Binary Sync:
+- Fix current sync implementation to properly handle binary data
+- Implement proper error handling and logging for sync operations
+- Ensure database uploads and downloads work correctly as binary files
+
+OPERATING MODES [PENDING]
+--------------------------
+The application must support two distinct operating modes:
+
+LOCAL Mode:
+- Data stored only in browser's IndexedDB
+- No cloud synchronization
+- No authentication required
+- Visual indicator showing LOCAL mode active
+- Can switch to CLOUD mode at any time
+
+CLOUD Mode:
+- Data synchronized with Google Drive
+- Local copy maintained in IndexedDB for offline access
+- Requires Google authentication
+- Background synchronization active
+- Can switch to LOCAL mode at any time
+
+Mode Selection on Startup:
+- If authentication token exists: Load from IndexedDB, assume CLOUD mode, sync in background
+- If no token exists: Show mode selection screen with two options:
+  * Sign in with Google (CLOUD mode)
+  * Use local storage only (LOCAL mode)
+
+SMART MERGE FUNCTIONALITY [PENDING]
+------------------------------------
+When switching from LOCAL to CLOUD mode, or syncing between devices, the application
+must intelligently merge databases rather than overwriting.
+
+Passenger Merge Algorithm:
+- Match passengers by name (case-insensitive comparison)
+- When passenger exists in both databases:
+  * Keep record with later created_at timestamp
+  * Assume records with same timestamp are duplicates
+- When passenger exists in only one database:
+  * Add to merged result
+- New passengers appended to end of display order
+- Maintain referential integrity for passenger IDs in notes table
+
+Note Merge Algorithm:
+- Match notes by: passenger name + note_date + time_of_day
+- When note exists in both databases:
+  * Keep version with later updated_at timestamp
+  * Assume records with same timestamp are duplicates
+- When note exists in only one database:
+  * Add to merged result
+- After merge, show summary: "X passengers added/updated, Y notes added/updated"
+
+Merge Simplifications:
+- No complex conflict resolution needed
+- Timestamp comparison is sufficient
+- Same timestamps = duplicates (skip)
+- Different timestamps = keep latest
+
+SYNCHRONIZATION STRATEGY [PENDING]
+-----------------------------------
+Change-Based Sync (replaces current time-based polling):
+- Maintain dirty flag to track unsaved changes in memory
+- Background process checks dirty flag every 10 seconds
+- Initiate sync to Google Drive when:
+  * Dirty flag is true
+  * User is online
+  * In CLOUD mode
+- After successful sync:
+  * Clear dirty flag
+  * Update last sync timestamp
+  * Persist to IndexedDB
+- Conflict resolution:
+  * Record with later updated_at timestamp always wins
+  * No manual conflict resolution needed
+
+USER INTERFACE REQUIREMENTS [PENDING]
+--------------------------------------
+
+Mode Selection Screen (First Use):
+- Show when no authentication token exists
+- Two clear options:
+  1. "Sign in with Google" - Enable cloud sync
+  2. "Use Local Storage Only" - No sign-in required
+- Explain benefits of each mode
+
+Database Merge Dialog:
+- Show when merging LOCAL and CLOUD databases
+- Display statistics for both databases:
+  * Passenger count
+  * Note count
+  * Last modified date
+- Three merge options:
+  1. "Smart Merge Both" (recommended) - Combine intelligently
+  2. "Use Local Only" - Discard cloud data
+  3. "Use Cloud Only" - Discard local data
+- After merge: Show summary of what was merged
+
+Settings Page Adaptations:
+- LOCAL Mode Settings:
+  * Button: "Enable Cloud Sync" (triggers Google sign-in)
+  * Button: "Reset Local Database" (delete all data, start fresh)
+  * Confirmation required for reset
+  
+- CLOUD Mode Settings:
+  * Display: Last sync time
+  * Button: "Force Sync Now" (immediate sync)
+  * Button: "Disable Cloud Sync" (switch to LOCAL mode)
+  * Button: "Reset & Re-download from Cloud" (delete local, re-download)
+  * Confirmation required for reset
+
+Sync Status Indicator:
+- Display in application header
+- Only visible in CLOUD mode
+- States:
+  * "Synced" - All changes saved to cloud
+  * "Syncing..." - Currently uploading to cloud
+  * "Offline" - No internet connection
+  * "Error" - Sync failed (with retry option)
+
+MODE SWITCHING [PENDING]
+-------------------------
+
+LOCAL to CLOUD Mode:
+1. User clicks "Enable Cloud Sync" in settings
+2. Trigger Google authentication
+3. Check for existing cloud database
+4. If both local and cloud databases exist:
+   - Show merge dialog with statistics
+   - Let user choose merge strategy
+5. Perform selected merge operation
+6. Enable background synchronization
+7. Update UI to show CLOUD mode
+
+CLOUD to LOCAL Mode:
+1. User clicks "Disable Cloud Sync" in settings
+2. Show confirmation dialog explaining implications
+3. Disable background synchronization
+4. Keep current local copy in IndexedDB
+5. Update UI to show LOCAL mode
+6. User can re-enable cloud sync later
+
+DATABASE RESET FUNCTIONALITY [PENDING]
+---------------------------------------
+
+LOCAL Mode Reset:
+- Button: "Reset Local Database"
+- Confirmation: "This will delete all local data. Cannot be undone."
+- Action:
+  1. Delete IndexedDB database
+  2. Create fresh empty database
+  3. Reload application
+
+CLOUD Mode Reset:
+- Button: "Reset & Re-download from Cloud"
+- Confirmation: "This will delete local copy and re-download from Google Drive."
+- Action:
+  1. Delete IndexedDB database
+  2. Download latest version from Google Drive
+  3. Store in IndexedDB
+  4. Reload application
+
+TECHNICAL IMPLEMENTATION NOTES [PENDING]
+-----------------------------------------
+- In-memory SQL.js database remains primary working copy
+- IndexedDB and Google Drive are persistence layers only
+- All merging happens in memory
+- Merged result persisted to both IndexedDB and Google Drive
+- Sync operations must not block UI
+- All sync operations provide clear visual feedback
+- Network failures handled gracefully (keep changes locally, retry later)
+- Existing database schema continues to work without modification
+- All current features remain functional during implementation
+
+================================================================================
+TECHNICAL ARCHITECTURE
+================================================================================
+
+TECHNOLOGY STACK
+----------------
 - Frontend: Pure HTML5, CSS3, vanilla JavaScript (ES6+ modules)
 - Database: SQL.js (SQLite compiled to WebAssembly - runs in browser)
-- Storage: Google Drive API for persistence
+- Storage: Google Drive API for persistence, IndexedDB for local caching
 - Authentication: Google OAuth 2.0 (Google Identity Services)
+- No backend server required - entirely client-side application
 
-File Structure:
+FILE STRUCTURE
+--------------
 /
-├── index.html                 # Main application shell
+├── index.html                          # Main application shell
+├── Requirements.txt                    # This file
+├── SETUP.md                           # Setup instructions
+├── .gitignore                         # Git ignore rules
 ├── styles/
-│   └── main.css              # All styling (light/dark mode)
+│   └── main.css                       # All styling (light/dark mode, responsive)
 ├── js/
-│   ├── main.js               # Application entry point
+│   ├── config.js                      # Configuration (local vs production mode)
+│   ├── main.js                        # Application entry point & initialization
 │   ├── auth/
-│   │   └── GoogleAuthService.js      # Single Responsibility: Authentication
+│   │   └── GoogleAuthService.js       # Google OAuth authentication
 │   ├── storage/
-│   │   ├── GoogleDriveService.js     # Single Responsibility: Drive operations
-│   │   └── DatabaseService.js        # Single Responsibility: SQLite operations
+│   │   ├── GoogleDriveService.js      # Google Drive file operations [NEEDS FIX]
+│   │   ├── LocalStorageService.js     # Browser localStorage (testing mode) [TO BE REPLACED]
+│   │   ├── IndexedDBService.js        # IndexedDB operations [PENDING]
+│   │   └── DatabaseService.js         # SQLite database operations
 │   ├── models/
-│   │   ├── Passenger.js              # Data model
-│   │   └── Note.js                   # Data model
+│   │   ├── Passenger.js               # Passenger data model
+│   │   └── Note.js                    # Note data model
 │   ├── services/
-│   │   ├── PassengerService.js       # Business logic: Passenger CRUD
-│   │   └── NoteService.js            # Business logic: Note CRUD
-│   └── ui/
-│       ├── DateSelector.js           # UI Component
-│       ├── TripSelector.js           # UI Component (AM/PM)
-│       ├── PassengerList.js          # UI Component
-│       └── PassengerManager.js       # UI Component (modal)
+│   │   ├── PassengerService.js        # Passenger business logic
+│   │   ├── NoteService.js             # Note business logic [NEEDS UPDATE]
+│   │   ├── PreferencesService.js      # User preferences (Google Drive)
+│   │   ├── LocalPreferencesService.js # User preferences (localStorage)
+│   │   ├── ModeManager.js             # Operating mode management [PENDING]
+│   │   └── MergeService.js            # Smart merge algorithm [PENDING]
+│   ├── ui/
+│   │   ├── DateSelector.js            # Date selection component
+│   │   ├── TripSelector.js            # AM/PM trip selector
+│   │   ├── PassengerList.js           # Passenger list display
+│   │   ├── PassengerManager.js        # Passenger management modal
+│   │   ├── SettingsManager.js         # Settings modal [NEEDS UPDATE]
+│   │   ├── ThemeManager.js            # Theme management
+│   │   ├── Dialog.js                  # Custom dialog system
+│   │   ├── ModeSelector.js            # Mode selection screen [PENDING]
+│   │   └── MergeDialog.js             # Database merge dialog [PENDING]
+│   └── utils/
+│       ├── DOMHelpers.js              # DOM manipulation utilities
+│       └── ModalBuilder.js            # Modal creation utilities
 └── lib/
-    └── sql-wasm.js           # SQL.js library
+    ├── sql-wasm.js                    # SQL.js library
+    └── sql-wasm.wasm                  # SQLite WebAssembly binary
 
-Database Schema:
+DATABASE SCHEMA
+---------------
 CREATE TABLE passengers (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
@@ -68,7 +351,7 @@ CREATE TABLE passengers (
 CREATE TABLE notes (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     passenger_id INTEGER NOT NULL,
-    note_date TEXT NOT NULL,
+    note_date TEXT NOT NULL,              -- Format: YYYY-MM-DD
     time_of_day TEXT NOT NULL CHECK(time_of_day IN ('AM', 'PM')),
     note_text TEXT DEFAULT '',
     created_at TEXT DEFAULT CURRENT_TIMESTAMP,
@@ -80,125 +363,451 @@ CREATE TABLE notes (
 CREATE INDEX idx_notes_date ON notes(note_date);
 CREATE INDEX idx_notes_passenger ON notes(passenger_id);
 
-Architecture Layers:
-1. Authentication Layer (GoogleAuthService.js)
-   - Handles Google OAuth flow
-   - Auto-refreshes tokens
-   - Returns authentication state (never null)
+ARCHITECTURE LAYERS
+-------------------
 
-2. Storage Layer (GoogleDriveService.js + DatabaseService.js)
-   - GoogleDriveService: Upload/download database file from Drive
-   - DatabaseService: All SQLite operations (queries, migrations)
-   - Error handling at source - returns empty collections on failure
-   - Creates database/folder if not exists on first run
+1. AUTHENTICATION LAYER [IMPLEMENTED]
+   - GoogleAuthService.js
+     * Handles Google OAuth 2.0 flow
+     * Auto-refreshes access tokens
+     * Returns authentication state
+     * Manages user session
 
-3. Business Logic Layer (PassengerService.js + NoteService.js)
-   - PassengerService: GetActivePassengers(), AddPassenger(), HidePassenger(), ReorderPassengers()
-   - NoteService: GetNotesForDate(), SaveNote(), AutoSaveNote()
-   - No null returns - always return valid collections/objects
-   - Validates inputs at method entry
+2. STORAGE LAYER [PARTIALLY IMPLEMENTED]
+   - GoogleDriveService.js [NEEDS FIX]
+     * Upload/download database file from Google Drive
+     * Manage files in BusPassengerNotes folder
+     * List available database files
+     * Handle preferences.json file
+     * ISSUE: Binary upload/download not working correctly
+   
+   - LocalStorageService.js [TO BE REPLACED]
+     * Browser localStorage implementation for testing
+     * Same interface as GoogleDriveService
+     * Base64 encoding for database storage
+     * Will be replaced by IndexedDBService
+   
+   - IndexedDBService.js [PENDING]
+     * Store database as Uint8Array
+     * Store metadata (timestamps, counts)
+     * Fast retrieval for app startup
+     * Database deletion capability
+   
+   - DatabaseService.js [IMPLEMENTED]
+     * All SQLite operations (queries, migrations)
+     * Database initialization and schema creation
+     * Error handling with safe defaults
 
-4. UI Layer (Component classes)
-   - Each component manages its own DOM and events
-   - Depends on services via dependency injection
-   - Renders based on data, doesn't manage state
+3. BUSINESS LOGIC LAYER [PARTIALLY IMPLEMENTED]
+   - PassengerService.js [IMPLEMENTED]
+     * GetActivePassengers() - Retrieve non-hidden passengers
+     * AddPassenger(name) - Create new passenger
+     * HidePassenger(id) - Mark passenger as hidden
+     * RestorePassenger(id) - Restore hidden passenger
+     * ReorderPassengers(passengers) - Update display order
+   
+   - NoteService.js [NEEDS UPDATE]
+     * GetNotesForDate(date, timeOfDay) - Retrieve notes
+     * SaveNote(passengerId, date, timeOfDay, text) - Save/update note
+     * AutoSaveNote() - Debounced auto-save (500ms delay)
+     * NEEDS: Dirty flag implementation
+     * NEEDS: Change-based sync (10 second check)
+   
+   - PreferencesService.js [IMPLEMENTED]
+     * LoadPreferences() - Load from preferences.json
+     * SavePreferences() - Save to preferences.json
+     * GetDatabaseFileId() - Current database file ID
+     * SetDatabaseFile() - Switch to different database
+     * Theme preference management
+   
+   - LocalPreferencesService.js [IMPLEMENTED]
+     * Same interface as PreferencesService
+     * Stores preferences in browser localStorage
+     * Manages multiple local databases
+   
+   - ModeManager.js [PENDING]
+     * Track current mode (LOCAL vs CLOUD)
+     * Handle mode switching
+     * Coordinate authentication state
+     * Manage IndexedDB and Google Drive coordination
+   
+   - MergeService.js [PENDING]
+     * Smart merge algorithm for passengers
+     * Smart merge algorithm for notes
+     * Timestamp-based conflict resolution
+     * Generate merge statistics
 
-Key Design Decisions:
-- No frameworks (React/Vue/Angular) for lightweight approach
-- SQL.js runs in browser - no backend needed
-- SOLID principles: Single Responsibility per class
-- Error handling at source layer
-- Auto-save with debouncing (500ms)
-- Background sync to Drive every 30 seconds if changes exist
-- Token refresh handled automatically
-- Modern CSS Grid/Flexbox layout
-- Dark mode via CSS custom properties
-- Mobile-first, touch-friendly design
+4. UI LAYER [PARTIALLY IMPLEMENTED]
+   - DateSelector.js [IMPLEMENTED]
+     * Date picker component
+     * Defaults to current date
+     * Triggers data reload on date change
+   
+   - TripSelector.js [IMPLEMENTED]
+     * AM/PM toggle buttons
+     * Highlights active selection
+     * Triggers data reload on trip change
+   
+   - PassengerList.js [IMPLEMENTED]
+     * Displays active passengers with note inputs
+     * Handles text input and auto-save
+     * Updates UI based on selected date/trip
+   
+   - PassengerManager.js [IMPLEMENTED]
+     * Modal for passenger management
+     * Add/hide/restore passengers
+     * Reorder passengers with up/down arrows
+     * Uses custom Dialog component
+   
+   - SettingsManager.js [NEEDS UPDATE]
+     * Settings modal with gear icon trigger
+     * Theme selection interface
+     * Database selection and switching
+     * Current database display
+     * Reset to default database
+     * NEEDS: Mode-specific settings
+     * NEEDS: Last sync time display
+     * NEEDS: Force sync button
+     * NEEDS: Mode switching buttons
+   
+   - ThemeManager.js [IMPLEMENTED]
+     * Manages light/dark/system theme
+     * Applies theme to document
+     * Persists theme preference
+     * System theme detection
+   
+   - Dialog.js [IMPLEMENTED]
+     * Custom prompt() replacement
+     * Custom confirm() replacement
+     * Promise-based API
+     * Cannot be blocked by browser
+     * Keyboard support and accessibility
+   
+   - ModeSelector.js [PENDING]
+     * Mode selection screen for first use
+     * LOCAL vs CLOUD mode options
+     * Explain benefits of each mode
+   
+   - MergeDialog.js [PENDING]
+     * Show database statistics
+     * Three merge options
+     * Display merge results
 
-RECENT UPDATES & FEATURES
+5. UTILITY LAYER [IMPLEMENTED]
+   - DOMHelpers.js
+     * Common DOM manipulation functions
+     * Element creation helpers
+   
+   - ModalBuilder.js
+     * Modal creation and management
+     * Consistent modal styling
 
-## Local Testing Mode (Added: 2025-10-29)
+DESIGN PRINCIPLES
+-----------------
+- SOLID Principles: Single Responsibility per class
+- Dependency Injection: Services injected into components
+- Error Handling: At source layer, returns safe defaults
+- No Null Returns: Always return valid collections/objects
+- Separation of Concerns: Clear layer boundaries
+- Mobile-First: Touch-friendly, responsive design
+- Progressive Enhancement: Works without JavaScript for basic HTML
 
-Added ability to test application locally without Google OAuth setup.
+KEY FEATURES
+------------
 
-**New Files:**
-- js/config.js - Configuration toggle between local/production modes
-- js/storage/LocalStorageService.js - Browser localStorage implementation
+1. AUTO-SAVE FUNCTIONALITY [IMPLEMENTED]
+   - Debounced auto-save (500ms after typing stops)
+   - Background sync to Google Drive every 30 seconds
+   - Visual feedback during save operations
+   - Handles network failures gracefully
 
-**Features:**
-- Toggle via AppConfig.useLocalStorage flag
-- Data stored in browser's localStorage (base64 encoded)
-- No authentication required in local mode
-- Visual indicator banner when in local testing mode
-- Same interface as GoogleDriveService for easy switching
+2. LOCAL TESTING MODE [IMPLEMENTED - TO BE ENHANCED]
+   - Toggle via AppConfig.useLocalStorage in config.js
+   - No Google OAuth required for development
+   - Data stored in browser's localStorage
+   - Visual banner indicates local mode
+   - Same interface as production mode
+   - ENHANCEMENT: Will become full LOCAL mode with IndexedDB
 
-**Usage:**
-- Set useLocalStorage: true in config.js for local testing
-- Set useLocalStorage: false for production with Google Drive
+3. CUSTOM DIALOG SYSTEM [IMPLEMENTED]
+   - Replaces browser's prompt() and confirm()
+   - Cannot be blocked by user clicking "Don't show"
+   - Styled to match application theme
+   - Keyboard accessible (Enter to confirm)
+   - Mobile-friendly touch targets
 
-## Custom Dialog System (Added: 2025-10-29)
+4. DATABASE SELECTION [IMPLEMENTED]
+   - Select any .db file from Google Drive
+   - Switch between personal and shared databases
+   - Share database via Google Drive sharing
+   - View database name and last modified date
+   - Reset to default database option
+   - Application reloads after database change
 
-Replaced browser's prompt() and confirm() dialogs with custom implementation.
+5. THEME MANAGEMENT [IMPLEMENTED]
+   - Three modes: System, Light, Dark
+   - System mode follows OS preference
+   - Manual override persists across sessions
+   - CSS custom properties for theming
+   - Smooth transitions between themes
 
-**New Files:**
-- js/ui/Dialog.js - Custom dialog component
+6. RESPONSIVE DESIGN [IMPLEMENTED]
+   - Mobile-first approach
+   - Touch-friendly buttons and inputs
+   - Optimized for phone screens
+   - Works on tablets and desktops
+   - CSS Grid and Flexbox layouts
 
-**Problem Solved:**
-- Browser dialogs can be blocked if user clicks "Don't show"
-- Once blocked, all future dialogs fail (breaking add/hide passenger features)
+7. SMART MERGE SYNC [PENDING]
+   - Intelligent database merging
+   - Timestamp-based conflict resolution
+   - LOCAL and CLOUD operating modes
+   - Change-based synchronization
+   - IndexedDB for local persistence
 
-**Features:**
-- Custom in-page dialogs that cannot be blocked
-- Prompt() method for text input
-- Confirm() method for yes/no questions
-- Promise-based API for async/await usage
-- Keyboard support (Enter to confirm, focus management)
-- Styled to match application theme
-- Mobile-friendly
-- Supports light/dark mode
+================================================================================
+CONFIGURATION
+================================================================================
 
-**Updated Files:**
-- js/ui/PassengerManager.js - Now uses Dialog component
-- styles/main.css - Added dialog styling
+PRODUCTION MODE (Google Drive) [IMPLEMENTED]
+---------------------------------------------
+In js/config.js:
+export const AppConfig = {
+    useLocalStorage: false
+};
 
-## Database Selection Feature (Added: 2025-10-29)
+Features:
+- Google OAuth authentication required
+- Data stored in Google Drive
+- Preferences in preferences.json
+- Database sharing via Drive sharing
+- Settings button visible
 
-Added ability to select and switch between different database files in Google Drive, enabling database sharing between users.
+LOCAL TESTING MODE [IMPLEMENTED]
+---------------------------------
+In js/config.js:
+export const AppConfig = {
+    useLocalStorage: true
+};
 
-**New Files:**
-- js/services/PreferencesService.js - Manages user preferences stored in Google Drive
-- js/ui/SettingsManager.js - Settings UI with database selection
+Features:
+- No authentication required
+- Data stored in browser localStorage
+- Preferences in localStorage
+- Visual "Local Testing Mode" banner
+- Settings button hidden
+- Quick testing without OAuth setup
 
-**Features:**
-- Settings button with SVG gear icon in header
-- User preferences stored in preferences.json in Google Drive
-- Select any .db file from Google Drive (including shared files)
-- Switch between databases with application reload
-- Reset to default database option
-- Current database name displayed in settings
-- Database list shows file name and last modified date
+FUTURE: LOCAL MODE [PENDING]
+-----------------------------
+- User-selectable mode (not just testing)
+- Data stored in IndexedDB
+- No cloud synchronization
+- Can switch to CLOUD mode anytime
+- Full-featured offline operation
 
-**User Flow:**
-1. Click gear icon → Settings modal opens
+FUTURE: CLOUD MODE [PENDING]
+-----------------------------
+- User-selectable mode
+- Data synchronized with Google Drive
+- Local copy in IndexedDB
+- Background sync with dirty flag
+- Can switch to LOCAL mode anytime
+
+================================================================================
+USER WORKFLOWS
+================================================================================
+
+FIRST TIME SETUP [IMPLEMENTED]
+-------------------------------
+1. User navigates to application URL
+2. Clicks "Sign in with Google"
+3. Completes Google OAuth flow
+4. Application creates BusPassengerNotes folder in Drive
+5. Creates default passengers.db database
+6. Creates preferences.json file
+7. User can begin adding passengers and notes
+
+DAILY NOTE TAKING [IMPLEMENTED]
+--------------------------------
+1. User opens application (auto-signs in)
+2. Date defaults to today
+3. Select AM or PM trip
+4. View list of active passengers
+5. Type or dictate notes for each passenger
+6. Notes auto-save after 500ms
+7. Background sync to Drive every 30 seconds
+
+PASSENGER MANAGEMENT [IMPLEMENTED]
+-----------------------------------
+1. Click "Manage Passengers" button
+2. View current passenger list with order
+3. Add new passenger: Click "Add", enter name
+4. Hide passenger: Click "Hide" button
+5. Restore passenger: Click "Show Hidden", select passenger
+6. Reorder: Use up/down arrows
+7. Close modal to save changes
+
+DATABASE SWITCHING [IMPLEMENTED]
+---------------------------------
+1. Click gear icon (Settings)
 2. View current database name
-3. Click "Select Different Database" → Browse all .db files in Drive
-4. Select a database → Confirm → App reloads with new database
-5. Or click "Reset to Default" to return to default passengers.db
+3. Click "Select Different Database"
+4. Browse list of .db files in Drive
+5. Select desired database
+6. Confirm selection
+7. Application reloads with new database
 
-**Use Cases:**
-- Multiple users can share the same database file via Google Drive sharing
-- Switch between personal and shared databases
-- Use different databases for different bus routes
-- Backup and restore by selecting different database files
+THEME SELECTION [IMPLEMENTED]
+------------------------------
+1. Click gear icon (Settings)
+2. View theme options (System/Light/Dark)
+3. Select desired theme
+4. Theme applies immediately
+5. Preference saved automatically
 
-**Technical Details:**
-- Preferences file: BusPassengerNotes/preferences.json
-- Contains: databaseFileId, databaseFileName, lastModified
-- Settings button hidden in local testing mode
-- Application reloads after database change to ensure clean state
+MODE SELECTION (FIRST USE) [PENDING]
+-------------------------------------
+1. User navigates to application URL
+2. No authentication token exists
+3. Mode selection screen appears
+4. Choose "Sign in with Google" (CLOUD) or "Use Local Storage" (LOCAL)
+5. If CLOUD: Complete OAuth flow
+6. If LOCAL: Start using immediately
+7. Begin adding passengers and notes
 
-**Updated Files:**
-- js/storage/GoogleDriveService.js - Added preferences and file listing methods
-- js/main.js - Integrated PreferencesService and SettingsManager
-- index.html - Added settings button with SVG gear icon
-- styles/main.css - Added settings UI styling
+SWITCHING FROM LOCAL TO CLOUD MODE [PENDING]
+---------------------------------------------
+1. User in LOCAL mode clicks "Enable Cloud Sync" in settings
+2. Complete Google authentication
+3. If cloud database exists:
+   - Merge dialog appears with statistics
+   - Choose merge strategy (Smart Merge/Local Only/Cloud Only)
+4. Perform merge operation
+5. Show merge summary
+6. Enable background sync
+7. Continue working in CLOUD mode
+
+SWITCHING FROM CLOUD TO LOCAL MODE [PENDING]
+---------------------------------------------
+1. User in CLOUD mode clicks "Disable Cloud Sync" in settings
+2. Confirmation dialog appears
+3. Confirm to disable cloud sync
+4. Background sync stops
+5. Local copy remains in IndexedDB
+6. Continue working in LOCAL mode
+7. Can re-enable cloud sync later
+
+================================================================================
+SECURITY & PRIVACY
+================================================================================
+
+- All data stored in user's personal Google Drive
+- OAuth tokens managed securely by Google Identity Services
+- No data sent to external servers (except Google Drive)
+- Database files are private by default
+- Users control sharing via Google Drive permissions
+- Local testing mode data stays in browser only
+- No telemetry or analytics tracking
+- IndexedDB data isolated per origin (browser security)
+
+================================================================================
+BROWSER COMPATIBILITY
+================================================================================
+
+Minimum Requirements:
+- Modern browser with ES6+ support
+- WebAssembly support (for SQL.js)
+- IndexedDB support (for local persistence)
+- Fetch API support
+
+Tested Browsers:
+- Chrome/Edge 90+
+- Firefox 88+
+- Safari 14+
+- Mobile Safari (iOS 14+)
+- Chrome Mobile (Android)
+
+================================================================================
+IMPLEMENTATION ROADMAP
+================================================================================
+
+PHASE 1: IndexedDB Foundation [PENDING]
+----------------------------------------
+1. Create IndexedDBService.js
+2. Implement database storage as Uint8Array
+3. Add metadata storage (timestamps, counts)
+4. Replace LocalStorageService with IndexedDBService
+5. Test database persistence and retrieval
+
+PHASE 2: Fix Google Drive Sync [PENDING]
+-----------------------------------------
+1. Fix binary upload/download in GoogleDriveService
+2. Add proper error handling and logging
+3. Test with actual binary database files
+4. Verify data integrity after sync
+
+PHASE 3: Smart Merge Algorithm [PENDING]
+-----------------------------------------
+1. Create MergeService.js
+2. Implement passenger merge by name
+3. Implement note merge by passenger+date+time
+4. Add timestamp-based conflict resolution
+5. Generate merge statistics
+6. Test merge scenarios
+
+PHASE 4: Mode Management [PENDING]
+-----------------------------------
+1. Create ModeManager.js
+2. Implement LOCAL and CLOUD mode tracking
+3. Add mode switching logic
+4. Coordinate IndexedDB and Google Drive
+5. Handle authentication state changes
+
+PHASE 5: Change-Based Sync [PENDING]
+-------------------------------------
+1. Add dirty flag to NoteService
+2. Implement 10-second check interval
+3. Sync only when dirty flag is true
+4. Clear flag after successful sync
+5. Update sync status indicator
+
+PHASE 6: UI Components [PENDING]
+---------------------------------
+1. Create ModeSelector.js (first use screen)
+2. Create MergeDialog.js (merge options)
+3. Update SettingsManager.js (mode-specific settings)
+4. Add sync status indicator to header
+5. Add mode switching buttons
+
+PHASE 7: Database Reset Features [PENDING]
+-------------------------------------------
+1. Add reset local database (LOCAL mode)
+2. Add reset and re-download (CLOUD mode)
+3. Implement confirmation dialogs
+4. Test reset operations
+
+PHASE 8: Testing & Polish [PENDING]
+------------------------------------
+1. Test all mode switching scenarios
+2. Test merge algorithm with various data sets
+3. Test offline behavior
+4. Test sync error handling
+5. Performance optimization
+6. Documentation updates
+
+================================================================================
+KNOWN ISSUES
+================================================================================
+
+1. Google Drive Binary Sync [PENDING FIX]
+   - Current implementation not properly handling binary data
+   - Uploads and downloads may corrupt database
+   - Needs proper binary handling and error logging
+
+2. localStorage Limitations [TO BE REPLACED]
+   - Limited storage capacity
+   - Not ideal for binary data
+   - Will be replaced with IndexedDB
+
+================================================================================

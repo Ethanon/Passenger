@@ -1,4 +1,7 @@
 import { Dialog } from './Dialog.js';
+import { ModalBuilder } from '../utils/ModalBuilder.js';
+import { DOMHelpers } from '../utils/DOMHelpers.js';
+import { ThemeManager } from './ThemeManager.js';
 
 export class SettingsManager {
     constructor(preferencesService, driveService, onDatabaseChanged, isLocalMode = false, databaseService = null) {
@@ -8,7 +11,10 @@ export class SettingsManager {
         this.isLocalMode = isLocalMode;
         this.databaseService = databaseService;
         this.dialog = new Dialog();
-        this.modal = null;
+        this.modalBuilder = new ModalBuilder();
+        this.themeManager = new ThemeManager(preferencesService);
+        this.advancedExpanded = false;
+        this.modalBody = null;
         this.Initialize();
     }
 
@@ -17,286 +23,246 @@ export class SettingsManager {
     }
 
     Show() {
-        this.CreateModal();
+        const { body } = this.modalBuilder.Create({
+            title: 'Settings',
+            bodyId: 'settings-modal-body',
+            onClose: null
+        });
+        this.modalBody = body;
+        this.modalBuilder.Show();
         this.Render();
     }
 
-    CreateModal() {
-        this.modal = document.createElement('div');
-        this.modal.className = 'modal';
-        
-        const content = document.createElement('div');
-        content.className = 'modal-content';
-        
-        const header = document.createElement('div');
-        header.className = 'modal-header';
-        
-        const title = document.createElement('h2');
-        title.textContent = 'Settings';
-        
-        const closeButton = document.createElement('button');
-        closeButton.className = 'close-button';
-        closeButton.innerHTML = '&times;';
-        closeButton.addEventListener('click', () => this.Hide());
-        
-        header.appendChild(title);
-        header.appendChild(closeButton);
-        
-        const body = document.createElement('div');
-        body.className = 'modal-body';
-        body.id = 'settings-modal-body';
-        
-        content.appendChild(header);
-        content.appendChild(body);
-        this.modal.appendChild(content);
-        
-        this.modal.addEventListener('click', (e) => {
-            if (e.target === this.modal) {
-                this.Hide();
-            }
-        });
-        
-        document.body.appendChild(this.modal);
+    async Render() {
+        this.modalBody.innerHTML = '';
+
+        // Appearance Section with Theme
+        this.RenderAppearanceSection();
+
+        // Data Export Section
+        if (this.databaseService) {
+            this.RenderDataExportSection();
+        }
+
+        // Advanced Section (Collapsible)
+        this.RenderAdvancedSection();
+
+        // Info Section
+        this.RenderInfoSection();
     }
 
-    async Render() {
-        const body = document.getElementById('settings-modal-body');
-        body.innerHTML = '';
+    RenderAppearanceSection() {
+        const { section } = DOMHelpers.createSection('Appearance');
+        const { subsection } = DOMHelpers.createSubsection('Theme');
+        
+        const themeSelector = this.themeManager.CreateThemeSelector();
+        subsection.appendChild(themeSelector);
+        section.appendChild(subsection);
+        
+        this.modalBody.appendChild(section);
+    }
 
-        const modeSection = document.createElement('div');
-        modeSection.className = 'settings-section';
+    RenderDataExportSection() {
+        this.modalBody.appendChild(DOMHelpers.createDivider());
+        
+        const { section } = DOMHelpers.createSection('Data Export');
+        const exportButton = DOMHelpers.createButton(
+            'Export Notes to CSV',
+            'action-button export-csv-button',
+            () => this.ExportNotesToCSV()
+        );
+        
+        section.appendChild(exportButton);
+        this.modalBody.appendChild(section);
+    }
 
-        const modeTitle = document.createElement('h3');
-        modeTitle.textContent = 'Mode';
-        modeTitle.className = 'settings-section-title';
+    RenderAdvancedSection() {
+        this.modalBody.appendChild(DOMHelpers.createDivider());
 
-        const modeBadge = document.createElement('div');
-        modeBadge.className = this.isLocalMode ? 'mode-badge local-mode' : 'mode-badge online-mode';
+        const section = DOMHelpers.createContainer('settings-section');
+
+        // Advanced header (clickable)
+        const header = DOMHelpers.createContainer('advanced-header');
+        header.addEventListener('click', () => this.ToggleAdvanced());
+
+        const title = DOMHelpers.createText('h3', 'Advanced', 'settings-section-title');
+        const chevron = document.createElement('span');
+        chevron.className = this.advancedExpanded ? 'chevron expanded' : 'chevron';
+        chevron.innerHTML = '▼';
+
+        DOMHelpers.appendChildren(header, title, chevron);
+        section.appendChild(header);
+
+        // Advanced content (collapsible)
+        const content = DOMHelpers.createContainer(
+            this.advancedExpanded ? 'advanced-content expanded' : 'advanced-content'
+        );
+        content.id = 'advanced-content';
+
+        // Mode subsection
+        content.appendChild(this.CreateModeSubsection());
+
+        // Database subsection
+        content.appendChild(this.CreateDatabaseSubsection());
+
+        section.appendChild(content);
+        this.modalBody.appendChild(section);
+    }
+
+    CreateModeSubsection() {
+        const { subsection } = DOMHelpers.createSubsection('Mode');
+
+        const modeBadge = DOMHelpers.createContainer(
+            this.isLocalMode ? 'mode-badge local-mode' : 'mode-badge online-mode'
+        );
         modeBadge.textContent = this.isLocalMode ? 'Local Testing Mode' : 'Google Drive Mode';
 
-        const modeSubtitle = document.createElement('p');
-        modeSubtitle.className = 'mode-subtitle';
-        modeSubtitle.textContent = this.isLocalMode 
-            ? 'Data stored in browser' 
-            : 'Data synced to Google Drive';
+        const modeSubtitle = DOMHelpers.createText(
+            'p',
+            this.isLocalMode ? 'Data stored in browser' : 'Data synced to Google Drive',
+            'mode-subtitle'
+        );
 
-        modeSection.appendChild(modeTitle);
-        modeSection.appendChild(modeBadge);
-        modeSection.appendChild(modeSubtitle);
+        DOMHelpers.appendChildren(subsection, modeBadge, modeSubtitle);
+        return subsection;
+    }
 
-        body.appendChild(modeSection);
+    CreateDatabaseSubsection() {
+        const { subsection } = DOMHelpers.createSubsection('Database');
 
-        const divider = document.createElement('hr');
-        divider.className = 'settings-divider';
-        body.appendChild(divider);
+        const currentDbLabel = DOMHelpers.createText('p', 'Current Database:', 'settings-label');
+        const currentDbValue = DOMHelpers.createText(
+            'p',
+            this.preferencesService.GetDatabaseFileName(),
+            'settings-value'
+        );
 
-        const section = document.createElement('div');
-        section.className = 'settings-section';
+        DOMHelpers.appendChildren(subsection, currentDbLabel, currentDbValue);
 
-        const sectionTitle = document.createElement('h3');
-        sectionTitle.textContent = 'Database';
-        sectionTitle.className = 'settings-section-title';
+        // Database Selection
+        const selectionTitle = DOMHelpers.createText('h5', 'Database Selection', 'settings-subsubsection-title');
+        const selectionButtons = DOMHelpers.createButtonGrid();
 
-        const currentDbLabel = document.createElement('p');
-        currentDbLabel.className = 'settings-label';
-        currentDbLabel.textContent = 'Current Database:';
+        const selectButton = DOMHelpers.createButton(
+            'Select Different Database',
+            'action-button',
+            () => this.ShowDatabasePicker()
+        );
 
-        const currentDbValue = document.createElement('p');
-        currentDbValue.className = 'settings-value';
-        currentDbValue.textContent = this.preferencesService.GetDatabaseFileName();
-
-        const buttonContainer = document.createElement('div');
-        buttonContainer.className = 'settings-buttons';
-
-        const selectButton = document.createElement('button');
-        selectButton.className = 'action-button';
-        selectButton.textContent = 'Select Different Database';
-        selectButton.addEventListener('click', () => this.ShowDatabasePicker());
-
-        buttonContainer.appendChild(selectButton);
-
-        if (this.isLocalMode) {
-            const createButton = document.createElement('button');
-            createButton.className = 'action-button';
-            createButton.textContent = 'Create New Database';
-            createButton.addEventListener('click', () => this.CreateNewDatabase());
-
-            const exportButton = document.createElement('button');
-            exportButton.className = 'action-button secondary';
-            exportButton.textContent = 'Export Database';
-            exportButton.addEventListener('click', () => this.ExportDatabase());
-
-            const importButton = document.createElement('button');
-            importButton.className = 'action-button secondary';
-            importButton.textContent = 'Import Database';
-            importButton.addEventListener('click', () => this.ImportDatabase());
-
-            buttonContainer.appendChild(createButton);
-            buttonContainer.appendChild(exportButton);
-            buttonContainer.appendChild(importButton);
-        }
-
-        if (this.databaseService) {
-            const exportCSVButton = document.createElement('button');
-            exportCSVButton.className = 'action-button secondary';
-            exportCSVButton.textContent = 'Export Notes to CSV';
-            exportCSVButton.addEventListener('click', () => this.ExportNotesToCSV());
-            buttonContainer.appendChild(exportCSVButton);
-        }
-
-        const resetButton = document.createElement('button');
-        resetButton.className = 'action-button secondary';
-        resetButton.textContent = 'Reset to Default';
-        resetButton.addEventListener('click', () => this.ResetToDefault());
+        const resetButton = DOMHelpers.createButton(
+            'Reset to Default',
+            'action-button secondary',
+            () => this.ResetToDefault()
+        );
 
         if (!this.preferencesService.HasCustomDatabase()) {
             resetButton.disabled = true;
             resetButton.style.opacity = '0.5';
         }
 
-        buttonContainer.appendChild(resetButton);
+        DOMHelpers.appendChildren(selectionButtons, selectButton, resetButton);
+        DOMHelpers.appendChildren(subsection, selectionTitle, selectionButtons);
 
-        section.appendChild(sectionTitle);
-        section.appendChild(currentDbLabel);
-        section.appendChild(currentDbValue);
-
-        body.appendChild(section);
-
-        const selectionSection = document.createElement('div');
-        selectionSection.className = 'settings-subsection';
-        
-        const selectionTitle = document.createElement('h4');
-        selectionTitle.className = 'settings-subsection-title';
-        selectionTitle.textContent = 'Database Selection';
-        
-        const selectionButtons = document.createElement('div');
-        selectionButtons.className = 'settings-button-grid';
-        selectionButtons.appendChild(selectButton);
-        selectionButtons.appendChild(resetButton);
-        
-        selectionSection.appendChild(selectionTitle);
-        selectionSection.appendChild(selectionButtons);
-        body.appendChild(selectionSection);
-
+        // Database Management (Local Mode only)
         if (this.isLocalMode) {
-            const managementSection = document.createElement('div');
-            managementSection.className = 'settings-subsection';
-            
-            const managementTitle = document.createElement('h4');
-            managementTitle.className = 'settings-subsection-title';
-            managementTitle.textContent = 'Database Management';
-            
-            const managementButtons = document.createElement('div');
-            managementButtons.className = 'settings-button-grid';
-            
-            const createButton = document.createElement('button');
-            createButton.className = 'action-button';
-            createButton.textContent = 'Create New Database';
-            createButton.addEventListener('click', () => this.CreateNewDatabase());
+            const managementTitle = DOMHelpers.createText('h5', 'Database Management', 'settings-subsubsection-title');
+            const managementButtons = DOMHelpers.createButtonGrid();
 
-            const importButton = document.createElement('button');
-            importButton.className = 'action-button secondary';
-            importButton.textContent = 'Import Database';
-            importButton.addEventListener('click', () => this.ImportDatabase());
+            const createButton = DOMHelpers.createButton(
+                'Create New Database',
+                'action-button',
+                () => this.CreateNewDatabase()
+            );
 
-            const exportButton = document.createElement('button');
-            exportButton.className = 'action-button secondary';
-            exportButton.textContent = 'Export Database';
-            exportButton.addEventListener('click', () => this.ExportDatabase());
+            const importButton = DOMHelpers.createButton(
+                'Import Database',
+                'action-button secondary',
+                () => this.ImportDatabase()
+            );
 
-            managementButtons.appendChild(createButton);
-            managementButtons.appendChild(importButton);
-            managementButtons.appendChild(exportButton);
-            
-            managementSection.appendChild(managementTitle);
-            managementSection.appendChild(managementButtons);
-            body.appendChild(managementSection);
+            const exportButton = DOMHelpers.createButton(
+                'Export Database',
+                'action-button secondary',
+                () => this.ExportDatabase()
+            );
+
+            DOMHelpers.appendChildren(managementButtons, createButton, importButton, exportButton);
+            DOMHelpers.appendChildren(subsection, managementTitle, managementButtons);
         }
 
-        if (this.databaseService) {
-            const exportSection = document.createElement('div');
-            exportSection.className = 'settings-subsection';
-            
-            const exportTitle = document.createElement('h4');
-            exportTitle.className = 'settings-subsection-title';
-            exportTitle.textContent = 'Data Export';
-            
-            const exportButtons = document.createElement('div');
-            exportButtons.className = 'settings-button-grid';
-            
-            const exportCSVButton = document.createElement('button');
-            exportCSVButton.className = 'action-button secondary';
-            exportCSVButton.textContent = 'Export Notes to CSV';
-            exportCSVButton.addEventListener('click', () => this.ExportNotesToCSV());
-            
-            exportButtons.appendChild(exportCSVButton);
-            
-            exportSection.appendChild(exportTitle);
-            exportSection.appendChild(exportButtons);
-            body.appendChild(exportSection);
+        return subsection;
+    }
+
+    RenderInfoSection() {
+        this.modalBody.appendChild(DOMHelpers.createDivider());
+
+        const infoSection = DOMHelpers.createContainer('settings-info-section');
+
+        const designedBy = DOMHelpers.createText('p', 'Designed and built by James McDuffie', 'info-text');
+        const copyright = DOMHelpers.createText('p', '© 2025 All rights reserved', 'info-text');
+        const inspiration = DOMHelpers.createText('p', 'Design inspiration by Steve Hamel', 'info-text');
+
+        DOMHelpers.appendChildren(infoSection, designedBy, copyright, inspiration);
+        this.modalBody.appendChild(infoSection);
+    }
+
+    ToggleAdvanced() {
+        this.advancedExpanded = !this.advancedExpanded;
+        const content = document.getElementById('advanced-content');
+        const chevron = document.querySelector('.chevron');
+        
+        if (this.advancedExpanded) {
+            content.classList.add('expanded');
+            chevron.classList.add('expanded');
+        } else {
+            content.classList.remove('expanded');
+            chevron.classList.remove('expanded');
         }
     }
 
     async ShowDatabasePicker() {
-        const body = document.getElementById('settings-modal-body');
-        body.innerHTML = '<p class="settings-loading">Loading databases...</p>';
+        this.modalBody.innerHTML = '<p class="settings-loading">Loading databases...</p>';
 
         const databases = await this.driveService.ListDatabaseFiles();
+        this.modalBody.innerHTML = '';
 
-        body.innerHTML = '';
+        const backButton = DOMHelpers.createButton('← Back', 'action-button secondary', () => this.Render());
+        const title = DOMHelpers.createText('h3', 'Select Database', 'settings-section-title');
 
-        const backButton = document.createElement('button');
-        backButton.className = 'action-button secondary';
-        backButton.textContent = '← Back';
-        backButton.addEventListener('click', () => this.Render());
-
-        const title = document.createElement('h3');
-        title.className = 'settings-section-title';
-        title.textContent = 'Select Database';
-
-        body.appendChild(backButton);
-        body.appendChild(title);
+        DOMHelpers.appendChildren(this.modalBody, backButton, title);
 
         if (databases.length === 0) {
-            const emptyMessage = document.createElement('p');
-            emptyMessage.className = 'empty-state';
-            emptyMessage.textContent = 'No database files found in Google Drive';
-            body.appendChild(emptyMessage);
+            const emptyMessage = DOMHelpers.createText('p', 'No database files found in Google Drive', 'empty-state');
+            this.modalBody.appendChild(emptyMessage);
             return;
         }
 
-        const list = document.createElement('div');
-        list.className = 'database-list';
+        const list = DOMHelpers.createContainer('database-list');
 
         databases.forEach(db => {
-            const item = document.createElement('div');
-            item.className = 'database-item';
+            const item = DOMHelpers.createContainer('database-item');
+            const info = DOMHelpers.createContainer('database-info');
 
-            const info = document.createElement('div');
-            info.className = 'database-info';
+            const name = DOMHelpers.createText('div', db.name, 'database-name');
+            const modified = DOMHelpers.createText(
+                'div',
+                new Date(db.modifiedTime).toLocaleDateString(),
+                'database-modified'
+            );
 
-            const name = document.createElement('div');
-            name.className = 'database-name';
-            name.textContent = db.name;
+            DOMHelpers.appendChildren(info, name, modified);
 
-            const modified = document.createElement('div');
-            modified.className = 'database-modified';
-            modified.textContent = new Date(db.modifiedTime).toLocaleDateString();
+            const selectBtn = DOMHelpers.createButton(
+                'Select',
+                'control-button',
+                () => this.SelectDatabase(db.id, db.name)
+            );
 
-            info.appendChild(name);
-            info.appendChild(modified);
-
-            const selectBtn = document.createElement('button');
-            selectBtn.className = 'control-button';
-            selectBtn.textContent = 'Select';
-            selectBtn.addEventListener('click', () => this.SelectDatabase(db.id, db.name));
-
-            item.appendChild(info);
-            item.appendChild(selectBtn);
+            DOMHelpers.appendChildren(item, info, selectBtn);
             list.appendChild(item);
         });
 
-        body.appendChild(list);
+        this.modalBody.appendChild(list);
     }
 
     async SelectDatabase(fileId, fileName) {
@@ -399,9 +365,6 @@ export class SettingsManager {
     }
 
     Hide() {
-        if (this.modal) {
-            document.body.removeChild(this.modal);
-            this.modal = null;
-        }
+        this.modalBuilder.Hide();
     }
 }

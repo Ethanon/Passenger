@@ -4,7 +4,7 @@ import { DatabaseService } from './storage/DatabaseService.js';
 import { GoogleDriveService } from './storage/GoogleDriveService.js';
 import { LocalStorageService } from './storage/LocalStorageService.js';
 import { PassengerService } from './services/PassengerService.js';
-import { NoteService } from './services/NoteService.js';
+import { DataStoreService } from './services/DataStoreService.js';
 import { PreferencesService } from './services/PreferencesService.js';
 import { LocalPreferencesService } from './services/LocalPreferencesService.js';
 import { DateSelector } from './ui/DateSelector.js';
@@ -12,6 +12,7 @@ import { TripSelector } from './ui/TripSelector.js';
 import { PassengerList } from './ui/PassengerList.js';
 import { PassengerManager } from './ui/PassengerManager.js';
 import { SettingsManager } from './ui/SettingsManager.js';
+import { ThemeManager } from './ui/ThemeManager.js';
 
 class Application {
     constructor() {
@@ -20,7 +21,7 @@ class Application {
         this.driveService = null;
         this.preferencesService = null;
         this.passengerService = null;
-        this.noteService = null;
+        this.dataStoreService = null;
         this.dateSelector = null;
         this.tripSelector = null;
         this.passengerList = null;
@@ -50,6 +51,10 @@ class Application {
         this.preferencesService = new LocalPreferencesService();
         await this.preferencesService.LoadPreferences();
         
+        // Initialize and apply theme
+        this.themeManager = new ThemeManager(this.preferencesService);
+        this.themeManager.Initialize();
+        
         const databaseKey = this.preferencesService.GetDatabaseFileId();
         this.driveService = new LocalStorageService(databaseKey);
         this.driveService.SetPreferencesService(this.preferencesService);
@@ -58,13 +63,20 @@ class Application {
         await this.databaseService.Initialize(databaseBuffer);
 
         this.passengerService = new PassengerService(this.databaseService);
-        this.noteService = new NoteService(this.databaseService, this.driveService);
+        this.dataStoreService = new DataStoreService(this.databaseService, this.driveService);
 
         this.InitializeUI();
         this.ShowMainContainer();
         this.LoadPassengers();
         
-        this.noteService.StartBackgroundSync();
+        // Disable logout button in local mode
+        const logoutButton = document.getElementById('logout-button');
+        logoutButton.disabled = true;
+        logoutButton.style.opacity = '0.5';
+        logoutButton.style.cursor = 'not-allowed';
+        logoutButton.title = 'Sign out not available in local mode';
+        
+        this.dataStoreService.StartBackgroundSync();
         this.StartSyncStatusMonitoring();
         
         this.ShowSyncStatus('Synced');
@@ -78,39 +90,54 @@ class Application {
     }
 
     async OnAuthenticated() {
-        this.ShowSyncStatus('Loading...');
+        this.ShowLoadingOverlay('Loading your data...');
         
-        this.driveService = new GoogleDriveService(this.authService);
-        this.preferencesService = new PreferencesService(this.driveService);
-        
-        await this.preferencesService.LoadPreferences();
-        
-        const databaseFileId = this.preferencesService.GetDatabaseFileId();
-        const databaseBuffer = databaseFileId
-            ? await this.driveService.DownloadDatabaseById(databaseFileId)
-            : await this.driveService.DownloadDatabase();
+        try {
+            this.driveService = new GoogleDriveService(this.authService);
+            this.preferencesService = new PreferencesService(this.driveService);
             
-        await this.databaseService.Initialize(databaseBuffer);
+            await this.preferencesService.LoadPreferences();
+            
+            this.themeManager = new ThemeManager(this.preferencesService);
+            this.themeManager.Initialize();
+            
+            const databaseFileId = this.preferencesService.GetDatabaseFileId();
+            const databaseBuffer = databaseFileId
+                ? await this.driveService.DownloadDatabaseById(databaseFileId)
+                : await this.driveService.DownloadDatabase();
+                
+            await this.databaseService.Initialize(databaseBuffer);
 
-        this.passengerService = new PassengerService(this.databaseService);
-        this.noteService = new NoteService(this.databaseService, this.driveService);
+            this.passengerService = new PassengerService(this.databaseService);
+            this.dataStoreService = new DataStoreService(this.databaseService, this.driveService);
 
-        this.InitializeUI();
-        this.ShowMainContainer();
-        this.LoadPassengers();
-        
-        this.noteService.StartBackgroundSync();
-        this.StartSyncStatusMonitoring();
-        
-        this.ShowSyncStatus('Synced');
+            this.InitializeUI();
+            this.ShowMainContainer();
+            this.LoadPassengers();
+            
+            document.getElementById('logout-button').addEventListener('click', () => {
+                this.authService.SignOut();
+            });
+            
+            this.dataStoreService.StartBackgroundSync();
+            this.StartSyncStatusMonitoring();
+            
+            this.ShowSyncStatus('Synced');
+        } catch (error) {
+            console.error('Failed to initialize application:', error);
+            this.ShowLoadingError('Failed to load data. Please try again.');
+        } finally {
+            this.HideLoadingOverlay();
+        }
     }
 
     InitializeUI() {
         this.dateSelector = new DateSelector((date) => this.OnDateChanged(date));
         this.tripSelector = new TripSelector((trip) => this.OnTripChanged(trip));
-        this.passengerList = new PassengerList(this.noteService);
+        this.passengerList = new PassengerList(this.dataStoreService);
         this.passengerManager = new PassengerManager(
             this.passengerService,
+            this.dataStoreService,
             () => this.LoadPassengers()
         );
         
@@ -153,14 +180,14 @@ class Application {
         document.getElementById('main-container').classList.add('hidden');
         document.getElementById('auth-container').classList.remove('hidden');
         
-        if (this.noteService) {
-            this.noteService.StopBackgroundSync();
+        if (this.dataStoreService) {
+            this.dataStoreService.StopBackgroundSync();
         }
     }
 
     StartSyncStatusMonitoring() {
         setInterval(() => {
-            if (this.noteService && this.noteService.HasPendingChanges()) {
+            if (this.dataStoreService && this.dataStoreService.HasPendingChanges()) {
                 this.ShowSyncStatus('Syncing...');
             } else {
                 this.ShowSyncStatus('Synced');
@@ -176,6 +203,44 @@ class Application {
             this.syncIndicator.classList.add('synced');
         } else if (status === 'Syncing...') {
             this.syncIndicator.classList.add('syncing');
+        }
+    }
+
+    ShowLoadingOverlay(message) {
+        let overlay = document.getElementById('loading-overlay');
+        if (!overlay) {
+            overlay = document.createElement('div');
+            overlay.id = 'loading-overlay';
+            overlay.className = 'loading-overlay';
+            overlay.innerHTML = `
+                <div class="loading-content">
+                    <div class="loading-spinner"></div>
+                    <div class="loading-message">${message}</div>
+                </div>
+            `;
+            document.body.appendChild(overlay);
+        } else {
+            overlay.querySelector('.loading-message').textContent = message;
+            overlay.classList.remove('hidden');
+        }
+    }
+
+    HideLoadingOverlay() {
+        const overlay = document.getElementById('loading-overlay');
+        if (overlay) {
+            overlay.classList.add('hidden');
+        }
+    }
+
+    ShowLoadingError(message) {
+        const overlay = document.getElementById('loading-overlay');
+        if (overlay) {
+            overlay.innerHTML = `
+                <div class="loading-content">
+                    <div class="loading-error">${message}</div>
+                    <button onclick="location.reload()" class="retry-button">Retry</button>
+                </div>
+            `;
         }
     }
 }
