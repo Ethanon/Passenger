@@ -94,9 +94,13 @@ export class GoogleAuthService {
 
     async GetAccessToken() {
         if (!this.IsAuthenticated()) {
-            return '';
+            // if we were never authenticated before - exit early
+            if (this.accessToken === null) {
+                return '';
+            }
         }
 
+        // Token expired, refresh it
         if (this.IsTokenExpired()) {
             await this.RefreshToken();
         }

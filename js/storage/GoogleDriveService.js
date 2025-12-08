@@ -79,19 +79,20 @@ export class GoogleDriveService {
         return data.files?.[0]?.id || null;
     }
 
-    async FindDatabaseFile() {
-        const fileId = await this.FindFileInFolder(this.databaseFileName);
-        if (fileId) this.databaseFileId = fileId;
-        return fileId;
-    }
-
     async DownloadFile(fileId) {
         const response = await this.AuthenticatedFetch(
             `${this.driveApiBase}/${fileId}?alt=media`
         );
         
-        if (!response?.ok) return null;
-        return await response.arrayBuffer();
+        return response?.ok ? await response.arrayBuffer() : null;
+    }
+
+    async DownloadTextFile(fileId) {
+        const response = await this.AuthenticatedFetch(
+            `${this.driveApiBase}/${fileId}?alt=media`
+        );
+        
+        return response?.ok ? await response.text() : null;
     }
 
     IsValidSQLite(buffer) {
@@ -99,27 +100,23 @@ export class GoogleDriveService {
         return bytes.length >= 16 && String.fromCharCode(...bytes.slice(0, 16)).startsWith('SQLite format 3');
     }
 
-    async DownloadDatabase() {
-        const fileId = await this.FindDatabaseFile();
-        if (!fileId) return null;
+    async DownloadDatabase(databaseFileId, databaseFileName) {
         
-        const buffer = await this.DownloadFile(fileId);
+        var buffer = await this.DownloadFile(databaseFileId);
         if (!buffer) {
-            console.error('GoogleDrive: Download failed for fileId', fileId);
-            return null;
+            fileId = await this.FindFileInFolder(databaseFileName);
+            if (!fileId) return null;
+            buffer = await this.DownloadFile(fileId);
+            if (!buffer) return null;
         }
         
+        // if we found a file, validate it's a sqlite database
         if (!this.IsValidSQLite(buffer)) {
             console.error('GoogleDrive: Invalid SQLite file', { fileId, size: buffer.byteLength });
             return null;
         }
         
         return buffer;
-    }
-
-    async DownloadDatabaseById(fileId) {
-        const buffer = await this.DownloadFile(fileId);
-        return buffer && this.IsValidSQLite(buffer) ? buffer : null;
     }
 
     ArrayBufferToBase64(buffer) {
@@ -172,24 +169,12 @@ export class GoogleDriveService {
         return await this.UploadDatabase(databaseBuffer);
     }
 
-    async FindPreferencesFile() {
-        return await this.FindFileInFolder(this.preferencesFileName);
-    }
-
-    async DownloadPreferences(fileId) {
-        const response = await this.AuthenticatedFetch(
-            `${this.driveApiBase}/${fileId}?alt=media`
-        );
-        
-        return response?.ok ? await response.text() : null;
-    }
-
-    async UploadPreferences(content, fileId = null) {
+    async UploadJsonFile(content, fileName, fileId = null) {
         await this.EnsureFolderExists();
         if (!this.folderId) return false;
 
         const metadata = {
-            name: this.preferencesFileName,
+            name: fileName,
             mimeType: this.jsonMimeType,
             parents: [this.folderId]
         };

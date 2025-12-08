@@ -2,7 +2,7 @@ import { AppConfig } from './config.js';
 import { GoogleAuthService } from './auth/GoogleAuthService.js';
 import { DatabaseService } from './storage/DatabaseService.js';
 import { GoogleDriveService } from './storage/GoogleDriveService.js';
-import { LocalStorageService } from './storage/LocalStorageService.js';
+import { LocalStorageService } from './storage/LocalDriveService.js';
 import { PassengerService } from './services/PassengerService.js';
 import { DataStoreService } from './services/DataStoreService.js';
 import { PreferencesService } from './services/PreferencesService.js';
@@ -17,7 +17,7 @@ import { ThemeManager } from './ui/ThemeManager.js';
 class Application {
     constructor() {
         this.authService = new GoogleAuthService();
-        this.databaseService = new DatabaseService();
+        this.databaseService = null;
         this.driveService = null;
         this.preferencesService = null;
         this.passengerService = null;
@@ -27,58 +27,49 @@ class Application {
         this.passengerList = null;
         this.passengerManager = null;
         this.settingsManager = null;
+        this.isAuthenticated = false;
         this.syncIndicator = document.getElementById('sync-indicator');
     }
 
     async Initialize() {
         if (AppConfig.useLocalStorage) {
             this.ShowLocalModeIndicator();
-            await this.InitializeLocalMode();
+            await this.InitializeApplication(true);
         } else {
             this.authService.Initialize(AppConfig.googleClientId, (isAuthenticated) => {
+                this.isAuthenticated = isAuthenticated;
                 if (isAuthenticated) {
-                    this.OnAuthenticated();
+                    this.InitializeApplication(false);
                 } else {
                     this.OnSignedOut();
                 }
             });
         }
     }
+    
+    async InitializeApplication(isLocal) {
 
-    async InitializeLocalMode() {
         this.ShowSyncStatus('Loading...');
-        
-        this.preferencesService = new LocalPreferencesService();
+
+        this.driveService = new GoogleDriveService(this.authService);
+        this.preferencesService = new PreferencesService(this.driveService);
         await this.preferencesService.LoadPreferences();
-        
-        // Initialize and apply theme
+
         this.themeManager = new ThemeManager(this.preferencesService);
         this.themeManager.Initialize();
         
-        const databaseKey = this.preferencesService.GetDatabaseFileId();
-        this.driveService = new LocalStorageService(databaseKey);
-        this.driveService.SetPreferencesService(this.preferencesService);
+        this.databaseService = new DatabaseService(this.driveService, this.preferencesService);
+        await this.databaseService.Initialize();
         
-        const databaseBuffer = await this.driveService.DownloadDatabase();
-        await this.databaseService.Initialize(databaseBuffer);
-
         this.passengerService = new PassengerService(this.databaseService);
         this.dataStoreService = new DataStoreService(this.databaseService, this.driveService);
 
-        this.InitializeUI();
+        this.InitializeUI(isLocal);
         this.ShowMainContainer();
         this.LoadPassengers();
-        
-        // Disable logout button in local mode
-        const logoutButton = document.getElementById('logout-button');
-        logoutButton.disabled = true;
-        logoutButton.style.opacity = '0.5';
-        logoutButton.style.cursor = 'not-allowed';
-        logoutButton.title = 'Sign out not available in local mode';
-        
+
         this.dataStoreService.StartBackgroundSync();
-        this.StartSyncStatusMonitoring();
-        
+        this.StartSyncStatusMonitoring();        
         this.ShowSyncStatus('Synced');
     }
 
@@ -89,49 +80,7 @@ class Application {
         document.body.insertBefore(indicator, document.body.firstChild);
     }
 
-    async OnAuthenticated() {
-        this.ShowLoadingOverlay('Loading your data...');
-        
-        try {
-            this.driveService = new GoogleDriveService(this.authService);
-            this.preferencesService = new PreferencesService(this.driveService);
-            
-            await this.preferencesService.LoadPreferences();
-            
-            this.themeManager = new ThemeManager(this.preferencesService);
-            this.themeManager.Initialize();
-            
-            const databaseFileId = this.preferencesService.GetDatabaseFileId();
-            const databaseBuffer = databaseFileId
-                ? await this.driveService.DownloadDatabaseById(databaseFileId)
-                : await this.driveService.DownloadDatabase();
-                
-            await this.databaseService.Initialize(databaseBuffer);
-
-            this.passengerService = new PassengerService(this.databaseService);
-            this.dataStoreService = new DataStoreService(this.databaseService, this.driveService);
-
-            this.InitializeUI();
-            this.ShowMainContainer();
-            this.LoadPassengers();
-            
-            document.getElementById('logout-button').addEventListener('click', () => {
-                this.authService.SignOut();
-            });
-            
-            this.dataStoreService.StartBackgroundSync();
-            this.StartSyncStatusMonitoring();
-            
-            this.ShowSyncStatus('Synced');
-        } catch (error) {
-            console.error('Failed to initialize application:', error);
-            this.ShowLoadingError('Failed to load data. Please try again.');
-        } finally {
-            this.HideLoadingOverlay();
-        }
-    }
-
-    InitializeUI() {
+    InitializeUI(isLocal) {
         this.dateSelector = new DateSelector((date) => this.OnDateChanged(date));
         this.tripSelector = new TripSelector((trip) => this.OnTripChanged(trip));
         this.passengerList = new PassengerList(this.dataStoreService);
@@ -148,6 +97,15 @@ class Application {
             AppConfig.useLocalStorage,
             this.databaseService
         );
+
+        if (isLocal) {
+            // Disable logout button in local mode
+            const logoutButton = document.getElementById('logout-button');
+            logoutButton.disabled = true;
+            logoutButton.style.opacity = '0.5';
+            logoutButton.style.cursor = 'not-allowed';
+            logoutButton.title = 'Sign out not available in local mode';
+        }
     }
 
     ReloadApplication() {

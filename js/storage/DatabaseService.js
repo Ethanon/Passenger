@@ -2,35 +2,58 @@ import { Passenger } from '../models/Passenger.js';
 import { Note } from '../models/Note.js';
 
 export class DatabaseService {
-    constructor() {
+    constructor(driveService, preferencesService) {
+        this.driveService = driveService;
+        this.preferencesService = preferencesService;
         this.db = null;
         this.isInitialized = false;
     }
 
-    async Initialize(databaseBuffer = null) {
+    async Initialize() {
         try {
-            const SQL = await initSqlJs({
+
+            // init a local database instance
+            const jsSQL = await initSqlJs({
                 locateFile: file => `lib/${file}`
             });
 
-            this.db = databaseBuffer 
-                ? new SQL.Database(new Uint8Array(databaseBuffer))
-                : new SQL.Database();
-
-            if (!databaseBuffer) {
-                this.CreateSchema();
+            if(!this.preferencesService.HasDatabase()){
+                this.db = this.CreateEmptyDatabase(jsSQL);
+                this.isInitialized = true;
+                return;
+            }
+            
+            if (this.preferencesService.DatabaseRequiresSync()) {
+                // TODO: handle sync before initialization
             }
 
+            // assuming the sync is done, and now we can just load the remote database
+            // try to download an existing databases
+            const dbFileId = this.preferencesService.GetDatabaseFileId();
+            const dbFileName = this.preferencesService.GetDatabaseFileName();
+            const databaseBuffer = await this.driveService.DownloadDatabase(dbFileId, dbFileName);
+
+            this.db = databaseBuffer ?
+                new SQL.Database(new Uint8Array(databaseBuffer)) :
+                this.CreateEmptyDatabase(jsSQL);
+
+            // perform any necessary schema updates
+            this.UpdateSchema();
             this.isInitialized = true;
-            return true;
+
         } catch (error) {
             console.error('Database initialization failed:', error);
             this.isInitialized = false;
-            return false;
         }
     }
 
-    CreateSchema() {
+    CreateEmptyDatabase(jsSQL) {
+        var db = new jsSQL.Database();
+        this.CreateSchema(db);
+        return db;
+    }
+
+    CreateSchema(db) {
         const schema = `
             CREATE TABLE IF NOT EXISTS passengers (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -56,7 +79,11 @@ export class DatabaseService {
             CREATE INDEX IF NOT EXISTS idx_notes_passenger ON notes(passenger_id);
         `;
 
-        this.db.run(schema);
+        db.run(schema);
+    }
+
+    UpdateSchema() {
+        // Implement schema migration logic here as needed
     }
 
     GetAllPassengers() {
@@ -230,7 +257,7 @@ export class DatabaseService {
                 csv += escapedRow.join(',') + '\n';
             });
 
-            return csv;
+            return '\uFEFF' + csv;
         } catch (error) {
             console.error('Failed to export notes to CSV:', error);
             return '';

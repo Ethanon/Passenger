@@ -32,6 +32,12 @@ export class LocalStorageService {
         }
     }
 
+    async FindPreferencesFile(fileName) {
+        return 'app-preferences';
+    }
+
+
+
     async UploadDatabase(databaseBuffer) {
         try {
             const bytes = new Uint8Array(databaseBuffer);
@@ -72,17 +78,6 @@ export class LocalStorageService {
             console.error('Failed to import database:', error);
             return false;
         }
-    }
-
-    async ListDatabaseFiles() {
-        if (!this.preferencesService) return [];
-        
-        const databases = this.preferencesService.GetAvailableDatabases();
-        return databases.map(db => ({
-            id: db.key,
-            name: db.name,
-            modifiedTime: db.created
-        }));
     }
 
     async DownloadDatabaseById(databaseKey) {
