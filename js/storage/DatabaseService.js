@@ -90,7 +90,10 @@ export class DatabaseService {
         const dbFileName = this.preferencesService.GetDatabaseFileName();
         const remoteBuffer = await this.driveService.DownloadDatabase(dbFileId, dbFileName);
 
-        if (!remoteBuffer) throw new Error(`Database corruption: Cloud sequence ${this.preferencesService.serverDBSequenceNumber} exists but file ${dbFileId} not found. Recovery: Use local DB and re-upload, or restore backup.`);
+        if (!remoteBuffer) {
+            this.db = localDB;
+            return;
+        }
 
         const remoteDB = new jsSQL.Database(new Uint8Array(remoteBuffer));
 

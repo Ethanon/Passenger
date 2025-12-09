@@ -19,9 +19,7 @@ export class DateSelector {
         const currentDate = new Date(year, month - 1, day);
         currentDate.setDate(currentDate.getDate() + offset);
         this.dateInput.value = currentDate.toLocaleDateString('en-CA');
-        if (this.onDateChanged) {
-            this.onDateChanged(this.GetSelectedDate());
-        }
+        this.onDateChanged?.(this.GetSelectedDate());
     }
 
     SetToday() {

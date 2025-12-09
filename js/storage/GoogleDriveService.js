@@ -101,21 +101,22 @@ export class GoogleDriveService {
     }
 
     async DownloadDatabase(databaseFileId, databaseFileName) {
-        
+        const token = await this.authService.GetAccessToken();
+        if (!token) return null;
+
         var buffer = await this.DownloadFile(databaseFileId);
         if (!buffer) {
-            fileId = await this.FindFileInFolder(databaseFileName);
+            const fileId = await this.FindFileInFolder(databaseFileName);
             if (!fileId) return null;
             buffer = await this.DownloadFile(fileId);
             if (!buffer) return null;
         }
-        
-        // if we found a file, validate it's a sqlite database
+
         if (!this.IsValidSQLite(buffer)) {
             console.error('GoogleDrive: Invalid SQLite file', { fileId, size: buffer.byteLength });
             return null;
         }
-        
+
         return buffer;
     }
 
