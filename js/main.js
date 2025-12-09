@@ -2,11 +2,9 @@ import { AppConfig } from './config.js';
 import { GoogleAuthService } from './auth/GoogleAuthService.js';
 import { DatabaseService } from './storage/DatabaseService.js';
 import { GoogleDriveService } from './storage/GoogleDriveService.js';
-import { LocalStorageService } from './storage/LocalDriveService.js';
 import { PassengerService } from './services/PassengerService.js';
 import { DataStoreService } from './services/DataStoreService.js';
 import { PreferencesService } from './services/PreferencesService.js';
-import { LocalPreferencesService } from './services/LocalPreferencesService.js';
 import { DateSelector } from './ui/DateSelector.js';
 import { TripSelector } from './ui/TripSelector.js';
 import { PassengerList } from './ui/PassengerList.js';
@@ -52,25 +50,31 @@ class Application {
         this.ShowSyncStatus('Loading...');
 
         this.driveService = new GoogleDriveService(this.authService);
+
         this.preferencesService = new PreferencesService(this.driveService);
         await this.preferencesService.LoadPreferences();
 
         this.themeManager = new ThemeManager(this.preferencesService);
         this.themeManager.Initialize();
-        
+
         this.databaseService = new DatabaseService(this.driveService, this.preferencesService);
         await this.databaseService.Initialize();
-        
+
         this.passengerService = new PassengerService(this.databaseService);
-        this.dataStoreService = new DataStoreService(this.databaseService, this.driveService);
+        this.dataStoreService = new DataStoreService(this.databaseService, this.driveService, this.preferencesService);
 
         this.InitializeUI(isLocal);
         this.ShowMainContainer();
         this.LoadPassengers();
 
-        this.dataStoreService.StartBackgroundSync();
-        this.StartSyncStatusMonitoring();        
-        this.ShowSyncStatus('Synced');
+        if (isLocal) {
+            this.ShowSyncStatus('Offline');
+        }
+        else {
+            this.dataStoreService.StartBackgroundSync();
+            this.StartSyncStatusMonitoring();
+            this.ShowSyncStatus('Synced');
+        }
     }
 
     ShowLocalModeIndicator() {

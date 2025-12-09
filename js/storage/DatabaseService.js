@@ -10,41 +10,38 @@ export class DatabaseService {
     }
 
     async Initialize() {
-        try {
+        const jsSQL = await initSqlJs({
+            locateFile: file => `lib/${file}`
+        });
 
-            // init a local database instance
-            const jsSQL = await initSqlJs({
-                locateFile: file => `lib/${file}`
-            });
+        const localBuffer = this.LoadFromLocalStorage();
 
-            if(!this.preferencesService.HasDatabase()){
-                this.db = this.CreateEmptyDatabase(jsSQL);
-                this.isInitialized = true;
-                return;
-            }
-            
-            if (this.preferencesService.DatabaseRequiresSync()) {
-                // TODO: handle sync before initialization
-            }
-
-            // assuming the sync is done, and now we can just load the remote database
-            // try to download an existing databases
+        // No database anywhere - create empty
+        if (!localBuffer && !this.preferencesService.HasDatabase()) {
+            this.db = this.CreateEmptyDatabase(jsSQL);
+        }
+        // Need to merge
+        else if (this.preferencesService.DatabaseRequiresSync()) {
+            if (!localBuffer) throw new Error(`Database corruption: Local sequence ${this.preferencesService.localDBSequenceNumber} exists but database not found. Recovery: Clear localStorage and re-sync.`);
+            await this.MergeDatabases(jsSQL, localBuffer);
+        }
+        // Sequences are same - use local (faster)
+        else if (localBuffer && this.preferencesService.UseLocalDatabase()) {
+            this.db = new jsSQL.Database(new Uint8Array(localBuffer));
+        }
+        else {
+            // Cloud is newer - download it
             const dbFileId = this.preferencesService.GetDatabaseFileId();
             const dbFileName = this.preferencesService.GetDatabaseFileName();
-            const databaseBuffer = await this.driveService.DownloadDatabase(dbFileId, dbFileName);
+            const remoteBuffer = await this.driveService.DownloadDatabase(dbFileId, dbFileName);
 
-            this.db = databaseBuffer ?
-                new SQL.Database(new Uint8Array(databaseBuffer)) :
-                this.CreateEmptyDatabase(jsSQL);
+            if (!remoteBuffer) throw new Error(`Database corruption: Cloud sequence ${this.preferencesService.serverDBSequenceNumber} exists but file ${dbFileId} not found. Recovery: Clear browser data and create new DB, or restore backup.`);
 
-            // perform any necessary schema updates
-            this.UpdateSchema();
-            this.isInitialized = true;
-
-        } catch (error) {
-            console.error('Database initialization failed:', error);
-            this.isInitialized = false;
+            this.db = new jsSQL.Database(new Uint8Array(remoteBuffer))
         }
+
+        this.isInitialized = true;
+        this.UpdateSchema();
     }
 
     CreateEmptyDatabase(jsSQL) {
@@ -84,6 +81,66 @@ export class DatabaseService {
 
     UpdateSchema() {
         // Implement schema migration logic here as needed
+    }
+
+    async MergeDatabases(jsSQL, localBuffer) {
+        const localDB = new jsSQL.Database(new Uint8Array(localBuffer));
+
+        const dbFileId = this.preferencesService.GetDatabaseFileId();
+        const dbFileName = this.preferencesService.GetDatabaseFileName();
+        const remoteBuffer = await this.driveService.DownloadDatabase(dbFileId, dbFileName);
+
+        if (!remoteBuffer) throw new Error(`Database corruption: Cloud sequence ${this.preferencesService.serverDBSequenceNumber} exists but file ${dbFileId} not found. Recovery: Use local DB and re-upload, or restore backup.`);
+
+        const remoteDB = new jsSQL.Database(new Uint8Array(remoteBuffer));
+
+        this.db = localDB;
+
+        const remotePassengers = remoteDB.exec('SELECT * FROM passengers');
+        if (remotePassengers.length > 0) {
+            remotePassengers[0].values.forEach(row => {
+                const [, name, display_order, is_hidden, created_at] = row;
+
+                const localMatch = this.db.exec(
+                    'SELECT id FROM passengers WHERE name = ?',
+                    [name]
+                );
+
+                if (localMatch.length === 0) {
+                    this.db.run(
+                        'INSERT INTO passengers (name, display_order, is_hidden, created_at) VALUES (?, ?, ?, ?)',
+                        [name, display_order, is_hidden, created_at]
+                    );
+                }
+            });
+        }
+
+        const remoteNotes = remoteDB.exec('SELECT * FROM notes');
+        if (remoteNotes.length > 0) {
+            remoteNotes[0].values.forEach(row => {
+                const [, passenger_id, note_date, time_of_day, note_text, created_at, updated_at] = row;
+
+                const localMatch = this.db.exec(
+                    'SELECT updated_at FROM notes WHERE passenger_id = ? AND note_date = ? AND time_of_day = ?',
+                    [passenger_id, note_date, time_of_day]
+                );
+
+                if (localMatch.length === 0) {
+                    this.db.run(
+                        'INSERT INTO notes (passenger_id, note_date, time_of_day, note_text, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)',
+                        [passenger_id, note_date, time_of_day, note_text, created_at, updated_at]
+                    );
+                } else {
+                    const localUpdatedAt = localMatch[0].values[0][0];
+                    if (updated_at > localUpdatedAt) {
+                        this.db.run(
+                            'UPDATE notes SET note_text = ?, updated_at = ? WHERE passenger_id = ? AND note_date = ? AND time_of_day = ?',
+                            [note_text, updated_at, passenger_id, note_date, time_of_day]
+                        );
+                    }
+                }
+            });
+        }
     }
 
     GetAllPassengers() {
@@ -136,10 +193,12 @@ export class DatabaseService {
                 : 1;
 
             this.db.run('INSERT INTO passengers (name, display_order) VALUES (?, ?)', [name, nextOrder]);
-            
+
             const result = this.db.exec('SELECT last_insert_rowid()');
             const passengerId = result[0].values[0][0];
-            
+
+            this.PersistToLocalStorage();
+
             return new Passenger(passengerId, name, nextOrder, false);
         } catch (error) {
             console.error('Failed to add passenger:', error);
@@ -155,6 +214,9 @@ export class DatabaseService {
                 'UPDATE passengers SET name = ?, display_order = ?, is_hidden = ? WHERE id = ?',
                 [passenger.name, passenger.displayOrder, passenger.isHidden ? 1 : 0, passenger.id]
             );
+
+            this.PersistToLocalStorage();
+
             return true;
         } catch (error) {
             console.error('Failed to update passenger:', error);
@@ -194,12 +256,15 @@ export class DatabaseService {
         try {
             const updatedAt = new Date().toISOString();
             this.db.run(
-                `INSERT INTO notes (passenger_id, note_date, time_of_day, note_text, updated_at) 
+                `INSERT INTO notes (passenger_id, note_date, time_of_day, note_text, updated_at)
                  VALUES (?, ?, ?, ?, ?)
-                 ON CONFLICT(passenger_id, note_date, time_of_day) 
+                 ON CONFLICT(passenger_id, note_date, time_of_day)
                  DO UPDATE SET note_text = ?, updated_at = ?`,
                 [passengerId, date, timeOfDay, noteText, updatedAt, noteText, updatedAt]
             );
+
+            this.PersistToLocalStorage();
+
             return true;
         } catch (error) {
             console.error('Failed to save note:', error);
@@ -262,6 +327,39 @@ export class DatabaseService {
             console.error('Failed to export notes to CSV:', error);
             return '';
         }
+    }
+
+    PersistToLocalStorage() {
+        if (!this.isInitialized) return;
+
+        const storageKey = this.preferencesService.GetLocalDatabaseKey();
+        const buffer = this.db.export();
+        const bytes = new Uint8Array(buffer);
+        let binaryString = '';
+
+        for (let i = 0; i < bytes.length; i++) {
+            binaryString += String.fromCharCode(bytes[i]);
+        }
+
+        const base64Data = btoa(binaryString);
+        localStorage.setItem(storageKey, base64Data);
+
+        this.preferencesService.IncrementDatabaseSequenceNumber();
+    }
+
+    LoadFromLocalStorage() {
+        const storageKey = this.preferencesService.GetLocalDatabaseKey();
+        const base64Data = localStorage.getItem(storageKey);
+        if (!base64Data) return null;
+
+        const binaryString = atob(base64Data);
+        const bytes = new Uint8Array(binaryString.length);
+
+        for (let i = 0; i < binaryString.length; i++) {
+            bytes[i] = binaryString.charCodeAt(i);
+        }
+
+        return bytes.buffer;
     }
 
     Close() {

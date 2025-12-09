@@ -64,12 +64,18 @@ export class PreferencesService {
         return this.localDBSequenceNumber > this.serverDBSequenceNumber;
     }
 
-    async SavePreferences() {
+    UseLocalDatabase() {
+        return this.localDBSequenceNumber == this.serverDBSequenceNumber;
+    }
+    
+    async SavePreferences(localOnly = false) {
         try {            
             this.preferences.lastModified = new Date().toISOString();
             const content = JSON.stringify(this.preferences, null, 2);
 
             await this.SetLocalPreferences(content);
+
+            if (localOnly) return true;
             
             // then attempt to save to remote drive
             const success = await this.driveService.UploadJsonFile(
@@ -107,7 +113,7 @@ export class PreferencesService {
 
     async SetDatabaseSequenceNumber(seqNumber) {
         this.preferences.databaseSequenceNumber = seqNumber;
-        return await this.SavePreferences();
+        return await this.SavePreferences(true);
     }
 
     GetDatabaseFileId() {
@@ -121,7 +127,7 @@ export class PreferencesService {
     async SetDatabaseFile(fileId, fileName) {
         this.preferences.databaseFileId = fileId;
         this.preferences.databaseFileName = fileName;
-        return await this.SavePreferences();
+        return await this.SavePreferences(true);
     }
 
     HasCustomDatabase() {
@@ -140,6 +146,16 @@ export class PreferencesService {
 
     async SetTheme(theme) {
         this.preferences.theme = theme;
-        return await this.SavePreferences();
+        return await this.SavePreferences(true);
+    }
+
+    GetLocalDatabaseKey() {
+        return 'app-database';
+    }
+
+    IncrementDatabaseSequenceNumber() {
+        const current = this.preferences.databaseSequenceNumber || 0;
+        this.preferences.databaseSequenceNumber = current + 1;
+        this.SavePreferences(true);
     }
 }

@@ -1,7 +1,8 @@
 export class DataStoreService {
-    constructor(databaseService, driveService) {
+    constructor(databaseService, driveService, preferencesService) {
         this.databaseService = databaseService;
         this.driveService = driveService;
+        this.preferencesService = preferencesService;
         this.autoSaveTimers = new Map();
         this.pendingSync = false;
         this.syncInterval = null;
@@ -62,16 +63,13 @@ export class DataStoreService {
 
     async SyncToCloud() {
         const databaseBuffer = this.databaseService.ExportDatabase();
-        
+
         if (databaseBuffer.length === 0) return false;
 
-        const success = await this.driveService.SyncDatabase(databaseBuffer);
-        
-        if (success) {
-            this.pendingSync = false;
-        }
-        
-        return success;
+        // upload database and update preferences in cloud storage
+        this.pendingSync = !(await this.driveService.SyncDatabase(databaseBuffer) && await this.preferencesService.SavePreferences(false));
+
+        return !this.pendingSync;
     }
 
     GetNoteForPassenger(passengerId, date, timeOfDay) {
