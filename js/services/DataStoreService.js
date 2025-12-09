@@ -1,8 +1,8 @@
 export class DataStoreService {
     constructor(databaseService, driveService, preferencesService) {
-        this.databaseService = databaseService;
-        this.driveService = driveService;
-        this.preferencesService = preferencesService;
+        this.database = databaseService;
+        this.drive = driveService;
+        this.preferences = preferencesService;
         this.autoSaveTimers = new Map();
         this.pendingSync = false;
         this.syncInterval = null;
@@ -10,13 +10,13 @@ export class DataStoreService {
 
     GetNotesForDate(date, timeOfDay) {
         if (!date || !timeOfDay) return [];
-        return this.databaseService.GetNotesForDate(date, timeOfDay);
+        return this.database.GetNotesForDate(date, timeOfDay);
     }
 
     SaveNote(passengerId, date, timeOfDay, noteText) {
         if (!passengerId || !date || !timeOfDay) return false;
         
-        const success = this.databaseService.SaveNote(passengerId, date, timeOfDay, noteText);
+        const success = this.database.SaveNote(passengerId, date, timeOfDay, noteText);
         
         if (success) {
             this.pendingSync = true;
@@ -62,13 +62,22 @@ export class DataStoreService {
     }
 
     async SyncToCloud() {
-        const databaseBuffer = this.databaseService.ExportDatabase();
-
+        const databaseBuffer = this.database.ExportDatabase();
         if (databaseBuffer.length === 0) return false;
 
-        // upload database and update preferences in cloud storage
-        this.pendingSync = !(await this.driveService.SyncDatabase(databaseBuffer) && await this.preferencesService.SavePreferences(false));
+        const dbSuccess = await this.drive.SyncDatabase(databaseBuffer);
+        if (!dbSuccess) {
+            this.pendingSync = true;
+            return false;
+        }
+        const csvSuccess = await this.drive.UploadCsvFile(this.database.ExportNotesToCSV(), this.preferences.GetCsvFileName(), this.preferences.GetCsvFileId());
 
+        if (csvSuccess && !csvFileId) {
+            const newCsvFileId = await this.drive.FindFileInFolder(csvFileName);
+            if (newCsvFileId) await this.preferences.SetCsvFile(newCsvFileId, csvFileName);
+        }
+
+        this.pendingSync = !(await this.preferences.SavePreferences(false));
         return !this.pendingSync;
     }
 

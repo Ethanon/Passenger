@@ -11,6 +11,7 @@ export class GoogleDriveService {
         this.multipartBoundary = '-------314159265358979323846';
         this.sqliteMimeType = 'application/octet-stream';
         this.jsonMimeType = 'application/json';
+        this.csvMimeType = 'text/csv';
         this.folderMimeType = 'application/vnd.google-apps.folder';
     }
 
@@ -131,39 +132,45 @@ export class GoogleDriveService {
                `${this.ArrayBufferToBase64(buffer)}\r\n--${boundary}--`;
     }
 
-    async UploadDatabase(databaseBuffer) {
+    async UploadFile(content, fileName, mimeType, fileId = null, isBuffer = false) {
         await this.EnsureFolderExists();
         if (!this.folderId) return false;
-        
-        const fileId = await this.FindDatabaseFile();
+
         const metadata = {
-            name: this.databaseFileName,
-            mimeType: this.sqliteMimeType,
-            parents: fileId ? undefined : [this.folderId]
+            name: fileName,
+            mimeType: mimeType,
+            parents: [this.folderId]
         };
-        
-        const response = await this.AuthenticatedFetch(
-            `${this.driveUploadBase}${fileId ? `/${fileId}` : ''}?uploadType=multipart`,
-            {
-                method: fileId ? 'PATCH' : 'POST',
-                headers: { 'Content-Type': `multipart/related; boundary=${this.multipartBoundary}` },
-                body: this.BuildMultipartBody(this.multipartBoundary, metadata, databaseBuffer)
-            }
-        );
-        
-        if (!response) {
-            console.error('GoogleDrive: Upload failed - no response (auth issue)');
-            return false;
+
+        let response;
+        if (isBuffer) {
+            response = await this.AuthenticatedFetch(
+                `${this.driveUploadBase}${fileId ? `/${fileId}` : ''}?uploadType=multipart`,
+                {
+                    method: fileId ? 'PATCH' : 'POST',
+                    headers: { 'Content-Type': `multipart/related; boundary=${this.multipartBoundary}` },
+                    body: this.BuildMultipartBody(this.multipartBoundary, metadata, content)
+                }
+            );
+        } else {
+            const form = new FormData();
+            form.append('metadata', new Blob([JSON.stringify(metadata)], { type: this.jsonMimeType }));
+            form.append('file', new Blob([content], { type: mimeType }));
+
+            response = await this.AuthenticatedFetch(
+                `${this.driveUploadBase}${fileId ? `/${fileId}` : ''}?uploadType=multipart`,
+                {
+                    method: fileId ? 'PATCH' : 'POST',
+                    body: form
+                }
+            );
         }
-        
-        if (response.ok) {
-            const data = await response.json();
-            this.databaseFileId = data.id;
-            return true;
-        }
-        
-        console.error('GoogleDrive: Upload failed', { status: response.status, size: databaseBuffer.byteLength });
-        return false;
+
+        return response?.ok || false;
+    }
+
+    async UploadDatabase(databaseBuffer, fileId = null) {
+        return await this.UploadFile(databaseBuffer, this.databaseFileName, this.sqliteMimeType, fileId, true);
     }
 
     async SyncDatabase(databaseBuffer) {
@@ -171,28 +178,11 @@ export class GoogleDriveService {
     }
 
     async UploadJsonFile(content, fileName, fileId = null) {
-        await this.EnsureFolderExists();
-        if (!this.folderId) return false;
+        return await this.UploadFile(content, fileName, this.jsonMimeType, fileId);
+    }
 
-        const metadata = {
-            name: fileName,
-            mimeType: this.jsonMimeType,
-            parents: [this.folderId]
-        };
-
-        const form = new FormData();
-        form.append('metadata', new Blob([JSON.stringify(metadata)], { type: this.jsonMimeType }));
-        form.append('file', new Blob([content], { type: this.jsonMimeType }));
-
-        const response = await this.AuthenticatedFetch(
-            `${this.driveUploadBase}${fileId ? `/${fileId}` : ''}?uploadType=multipart`,
-            {
-                method: fileId ? 'PATCH' : 'POST',
-                body: form
-            }
-        );
-
-        return response?.ok || false;
+    async UploadCsvFile(content, fileName, fileId = null) {
+        return await this.UploadFile(content, fileName, this.csvMimeType, fileId);
     }
 
     async ListDatabaseFiles() {

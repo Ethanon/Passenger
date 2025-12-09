@@ -9,6 +9,8 @@ export class PreferencesService {
         this.preferences = {
             databaseFileId: null,
             databaseFileName: 'passengers.db',
+            csvFileId: null,
+            csvFileName: 'notes-export.csv',
             databaseSequenceNumber: -1,
             lastModified: null,
             theme: 'system'
@@ -127,6 +129,20 @@ export class PreferencesService {
     async SetDatabaseFile(fileId, fileName) {
         this.preferences.databaseFileId = fileId;
         this.preferences.databaseFileName = fileName;
+        return await this.SavePreferences(true);
+    }
+
+    GetCsvFileId() {
+        return this.preferences.csvFileId;
+    }
+
+    GetCsvFileName() {
+        return this.preferences.csvFileName;
+    }
+
+    async SetCsvFile(fileId, fileName) {
+        this.preferences.csvFileId = fileId;
+        this.preferences.csvFileName = fileName;
         return await this.SavePreferences(true);
     }
 
