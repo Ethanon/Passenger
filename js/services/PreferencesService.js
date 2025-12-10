@@ -1,16 +1,19 @@
+import { FileType } from '../constants/FileTypes.js';
+
 export class PreferencesService {
     constructor(driveService) {
         this.driveService = driveService;
-        this.preferencesFileName = 'preferences.json';
         this.preferencesKey = 'app-preferences';
-        this.preferencesFileId = null;
+        this.preferencesVersion = 2;
         this.localDBSequenceNumber = -1;
         this.serverDBSequenceNumber = -1;
         this.preferences = {
-            databaseFileId: null,
-            databaseFileName: 'passengers.db',
-            csvFileId: null,
-            csvFileName: 'notes-export.csv',
+            version: 2,
+            files: {
+                [FileType.DATABASE]: { id: null, name: 'passengers.db' },
+                [FileType.CSV]: { id: null, name: 'notes-export.csv' },
+                [FileType.PREFERENCES]: { id: null, name: 'preferences.json' }
+            },
             databaseSequenceNumber: -1,
             lastModified: null,
             theme: 'system'
@@ -34,23 +37,22 @@ export class PreferencesService {
 
     async LoadPreferences() {
         try {
-            // get local or default preferences first
             this.preferences = this.GetLocalPreferences();
             this.localDBSequenceNumber = this.preferences.databaseSequenceNumber;
-            this.preferencesFileId = await this.driveService.FindFileInFolder(this.preferencesFileName);
-            
-            if (this.preferencesFileId) {
-                // download remote preferences and merge
-                const content = await this.driveService.DownloadTextFile(this.preferencesFileId);
+
+            const prefsFile = this.preferences.files[FileType.PREFERENCES];
+            const prefsFileId = await this.driveService.FindFileInFolder(prefsFile.name);
+
+            if (prefsFileId) {
+                this.preferences.files[FileType.PREFERENCES].id = prefsFileId;
+                const content = await this.driveService.DownloadTextFile(prefsFileId);
                 if (content) {
-                    // downloaded preferences always override local ones
                     const remotePreferences = JSON.parse(content);
                     this.serverDBSequenceNumber = remotePreferences.databaseSequenceNumber;
                     this.preferences = { ...this.preferences, ...remotePreferences };
                 }
             }
-            
-            // returns the downloaded preferences or the loca/default ones
+
             return this.preferences;
         } catch (error) {
             console.error('Failed to load preferences:', error);
@@ -71,27 +73,28 @@ export class PreferencesService {
     }
     
     async SavePreferences(localOnly = false) {
-        try {            
+        try {
             this.preferences.lastModified = new Date().toISOString();
             const content = JSON.stringify(this.preferences, null, 2);
 
             await this.SetLocalPreferences(content);
 
             if (localOnly) return true;
-            
-            // then attempt to save to remote drive
+
+            const prefsFile = this.preferences.files[FileType.PREFERENCES];
             const success = await this.driveService.UploadJsonFile(
                 content,
-                this.preferencesFileName,
-                this.preferencesFileId // null is ok - it will create a new file
+                prefsFile.name,
+                prefsFile.id
             );
-            
-            // verify that we saved the file id
-            if (success && !this.preferencesFileId) {
-                // get the new file id generated for this file
-                this.preferencesFileId = await this.driveService.FindPreferencesFile(this.preferencesFileName);                
+
+            if (success && !prefsFile.id) {
+                const newFileId = await this.driveService.FindFileInFolder(prefsFile.name);
+                if (newFileId) {
+                    this.preferences.files[FileType.PREFERENCES].id = newFileId;
+                }
             }
-            
+
             return success;
         } catch (error) {
             console.error('Failed to save preferences:', error);
@@ -101,12 +104,34 @@ export class PreferencesService {
 
     GetLocalPreferences() {
         const preferences = localStorage.getItem(this.preferencesKey);
-        // if we have local preferences stored, use them, else use defaults
-        return preferences ? JSON.parse(preferences) : this.preferences;
+        if (!preferences) return this.preferences;
+
+        const parsed = JSON.parse(preferences);
+
+        // Version check - if version doesn't match, use defaults
+        if (!parsed.version || parsed.version !== this.preferencesVersion) {
+            console.log('Preferences version mismatch or missing. Using defaults.');
+            return this.preferences;
+        }
+
+        return parsed;
     }
 
     SetLocalPreferences(content) {
         localStorage.setItem(this.preferencesKey, content);
+    }
+
+    GetFile(fileType) {
+        return this.preferences.files[fileType] || { id: null, name: null };
+    }
+
+    async SetFile(fileType, id, name = null) {
+        if (!this.preferences.files[fileType]) {
+            this.preferences.files[fileType] = {};
+        }
+        this.preferences.files[fileType].id = id;
+        if (name) this.preferences.files[fileType].name = name;
+        return await this.SavePreferences(true);
     }
 
     GetDatabaseSequenceNumber() {
@@ -118,41 +143,13 @@ export class PreferencesService {
         return await this.SavePreferences(true);
     }
 
-    GetDatabaseFileId() {
-        return this.preferences.databaseFileId;
-    }
-
-    GetDatabaseFileName() {
-        return this.preferences.databaseFileName;
-    }
-
-    async SetDatabaseFile(fileId, fileName) {
-        this.preferences.databaseFileId = fileId;
-        this.preferences.databaseFileName = fileName;
-        return await this.SavePreferences(true);
-    }
-
-    GetCsvFileId() {
-        return this.preferences.csvFileId;
-    }
-
-    GetCsvFileName() {
-        return this.preferences.csvFileName;
-    }
-
-    async SetCsvFile(fileId, fileName) {
-        this.preferences.csvFileId = fileId;
-        this.preferences.csvFileName = fileName;
-        return await this.SavePreferences(true);
-    }
-
     HasCustomDatabase() {
-        return this.preferences.databaseFileId !== null;
+        return this.preferences.files[FileType.DATABASE].id !== null;
     }
 
     async ClearDatabasePreference() {
-        this.preferences.databaseFileId = null;
-        this.preferences.databaseFileName = 'passengers.db';
+        this.preferences.files[FileType.DATABASE].id = null;
+        this.preferences.files[FileType.DATABASE].name = 'passengers.db';
         return await this.SavePreferences();
     }
 

@@ -97,6 +97,7 @@ class Application {
         this.settingsManager = new SettingsManager(
             this.preferencesService,
             this.driveService,
+            this.dataStoreService,
             () => this.ReloadApplication(),
             AppConfig.useLocalStorage,
             this.databaseService

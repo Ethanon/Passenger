@@ -2,11 +2,13 @@ import { Dialog } from './Dialog.js';
 import { ModalBuilder } from '../utils/ModalBuilder.js';
 import { DOMHelpers } from '../utils/DOMHelpers.js';
 import { ThemeManager } from './ThemeManager.js';
+import { FileType } from '../constants/FileTypes.js';
 
 export class SettingsManager {
-    constructor(preferencesService, driveService, onDatabaseChanged, isLocalMode = false, databaseService = null) {
+    constructor(preferencesService, driveService, dataStoreService, onDatabaseChanged, isLocalMode = false, databaseService = null) {
         this.preferencesService = preferencesService;
         this.driveService = driveService;
+        this.dataStoreService = dataStoreService;
         this.onDatabaseChanged = onDatabaseChanged;
         this.isLocalMode = isLocalMode;
         this.databaseService = databaseService;
@@ -133,35 +135,22 @@ export class SettingsManager {
         const currentDbLabel = DOMHelpers.createText('p', 'Current Database:', 'settings-label');
         const currentDbValue = DOMHelpers.createText(
             'p',
-            this.preferencesService.GetDatabaseFileName(),
+            this.preferencesService.GetFile(FileType.DATABASE).name,
             'settings-value'
         );
 
         DOMHelpers.appendChildren(subsection, currentDbLabel, currentDbValue);
 
-        // Database Selection
-        const selectionTitle = DOMHelpers.createText('h5', 'Database Selection', 'settings-subsubsection-title');
-        const selectionButtons = DOMHelpers.createButtonGrid();
-
-        const selectButton = DOMHelpers.createButton(
-            'Select Different Database',
-            'action-button',
-            () => this.ShowDatabasePicker()
-        );
-
-        const resetButton = DOMHelpers.createButton(
-            'Reset to Default',
-            'action-button secondary',
-            () => this.ResetToDefault()
-        );
-
-        if (!this.preferencesService.HasCustomDatabase()) {
-            resetButton.disabled = true;
-            resetButton.style.opacity = '0.5';
+        // Sync Actions (Online Mode only)
+        if (!this.isLocalMode) {
+            const syncTitle = DOMHelpers.createText('h5', 'Sync Actions', 'settings-subsubsection-title');
+            const syncButton = DOMHelpers.createButton(
+                'Sync Now',
+                'action-button',
+                () => this.HandleManualSync()
+            );
+            DOMHelpers.appendChildren(subsection, syncTitle, syncButton);
         }
-
-        DOMHelpers.appendChildren(selectionButtons, selectButton, resetButton);
-        DOMHelpers.appendChildren(subsection, selectionTitle, selectionButtons);
 
         // Database Management (Local Mode only)
         if (this.isLocalMode) {
@@ -271,7 +260,7 @@ export class SettingsManager {
         );
 
         if (confirmed) {
-            await this.preferencesService.SetDatabaseFile(fileId, fileName);
+            await this.preferencesService.SetFile(FileType.DATABASE, fileId, fileName);
             this.Hide();
             if (this.onDatabaseChanged) {
                 this.onDatabaseChanged();
@@ -304,7 +293,7 @@ export class SettingsManager {
     }
 
     async ExportDatabase() {
-        const fileName = this.preferencesService.GetDatabaseFileName().replace(/\s+/g, '-') + '.db';
+        const fileName = this.preferencesService.GetFile(FileType.DATABASE).name.replace(/\s+/g, '-') + '.db';
         const success = this.driveService.ExportDatabaseFile(fileName);
         if (success) {
             await this.dialog.Confirm('Database exported successfully!');
@@ -362,6 +351,11 @@ export class SettingsManager {
         URL.revokeObjectURL(url);
 
         await this.dialog.Confirm(`Notes exported successfully to ${fileName}`);
+    }
+
+    async HandleManualSync() {
+        if (this.isLocalMode || !this.dataStoreService) return;
+        await this.dataStoreService.SyncToCloud();
     }
 
     Hide() {

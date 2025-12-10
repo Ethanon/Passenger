@@ -1,3 +1,5 @@
+import { FileType } from '../constants/FileTypes.js';
+
 export class DataStoreService {
     constructor(databaseService, driveService, preferencesService) {
         this.database = databaseService;
@@ -65,16 +67,25 @@ export class DataStoreService {
         const databaseBuffer = this.database.ExportDatabase();
         if (databaseBuffer.length === 0) return false;
 
+        const dbFile = this.preferences.GetFile(FileType.DATABASE);
         const dbSuccess = await this.drive.SyncDatabase(databaseBuffer);
+
         if (!dbSuccess) {
             this.pendingSync = true;
             return false;
         }
-        const csvSuccess = await this.drive.UploadCsvFile(this.database.ExportNotesToCSV(), this.preferences.GetCsvFileName(), this.preferences.GetCsvFileId());
 
-        if (csvSuccess && !csvFileId) {
-            const newCsvFileId = await this.drive.FindFileInFolder(csvFileName);
-            if (newCsvFileId) await this.preferences.SetCsvFile(newCsvFileId, csvFileName);
+        if (!dbFile.id) {
+            const newDbFileId = await this.drive.FindFileInFolder(dbFile.name);
+            if (newDbFileId) await this.preferences.SetFile(FileType.DATABASE, newDbFileId);
+        }
+
+        const csvFile = this.preferences.GetFile(FileType.CSV);
+        const csvSuccess = await this.drive.UploadCsvFile(this.database.ExportNotesToCSV(), csvFile.id, csvFile.name);
+
+        if (csvSuccess && !csvFile.id) {
+            const newCsvFileId = await this.drive.FindFileInFolder(csvFile.name);
+            if (newCsvFileId) await this.preferences.SetFile(FileType.CSV, newCsvFileId);
         }
 
         this.pendingSync = !(await this.preferences.SavePreferences(false));

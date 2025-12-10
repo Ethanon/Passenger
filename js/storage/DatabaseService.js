@@ -1,5 +1,6 @@
 import { Passenger } from '../models/Passenger.js';
 import { Note } from '../models/Note.js';
+import { FileType } from '../constants/FileTypes.js';
 
 export class DatabaseService {
     constructor(driveService, preferencesService) {
@@ -31,11 +32,10 @@ export class DatabaseService {
         }
         else {
             // Cloud is newer - download it
-            const dbFileId = this.preferencesService.GetDatabaseFileId();
-            const dbFileName = this.preferencesService.GetDatabaseFileName();
-            const remoteBuffer = await this.driveService.DownloadDatabase(dbFileId, dbFileName);
+            const dbFile = this.preferencesService.GetFile(FileType.DATABASE);
+            const remoteBuffer = await this.driveService.DownloadDatabase(dbFile.id, dbFile.name);
 
-            if (!remoteBuffer) throw new Error(`Database corruption: Cloud sequence ${this.preferencesService.serverDBSequenceNumber} exists but file ${dbFileId} not found. Recovery: Clear browser data and create new DB, or restore backup.`);
+            if (!remoteBuffer) throw new Error(`Database corruption: Cloud sequence ${this.preferencesService.serverDBSequenceNumber} exists but file ${dbFile.id} not found. Recovery: Clear browser data and create new DB, or restore backup.`);
 
             this.db = new jsSQL.Database(new Uint8Array(remoteBuffer))
         }
@@ -86,9 +86,8 @@ export class DatabaseService {
     async MergeDatabases(jsSQL, localBuffer) {
         const localDB = new jsSQL.Database(new Uint8Array(localBuffer));
 
-        const dbFileId = this.preferencesService.GetDatabaseFileId();
-        const dbFileName = this.preferencesService.GetDatabaseFileName();
-        const remoteBuffer = await this.driveService.DownloadDatabase(dbFileId, dbFileName);
+        const dbFile = this.preferencesService.GetFile(FileType.DATABASE);
+        const remoteBuffer = await this.driveService.DownloadDatabase(dbFile.id, dbFile.name);
 
         if (!remoteBuffer) {
             this.db = localDB;
