@@ -141,43 +141,22 @@ export class SettingsManager {
 
         DOMHelpers.appendChildren(subsection, currentDbLabel, currentDbValue);
 
-        // Sync Actions (Online Mode only)
-        if (!this.isLocalMode) {
-            const syncTitle = DOMHelpers.createText('h5', 'Sync Actions', 'settings-subsubsection-title');
-            const syncButton = DOMHelpers.createButton(
-                'Sync Now',
-                'action-button',
-                () => this.HandleManualSync()
-            );
-            DOMHelpers.appendChildren(subsection, syncTitle, syncButton);
-        }
+        // Sync Actions - show in both modes, disable in local mode
+        const syncTitle = DOMHelpers.createText('h5', 'Sync Actions', 'settings-subsubsection-title');
+        const syncButton = DOMHelpers.createButton(
+            'Sync Now',
+            'action-button',
+            () => this.HandleManualSync()
+        );
 
-        // Database Management (Local Mode only)
         if (this.isLocalMode) {
-            const managementTitle = DOMHelpers.createText('h5', 'Database Management', 'settings-subsubsection-title');
-            const managementButtons = DOMHelpers.createButtonGrid();
-
-            const createButton = DOMHelpers.createButton(
-                'Create New Database',
-                'action-button',
-                () => this.CreateNewDatabase()
-            );
-
-            const importButton = DOMHelpers.createButton(
-                'Import Database',
-                'action-button secondary',
-                () => this.ImportDatabase()
-            );
-
-            const exportButton = DOMHelpers.createButton(
-                'Export Database',
-                'action-button secondary',
-                () => this.ExportDatabase()
-            );
-
-            DOMHelpers.appendChildren(managementButtons, createButton, importButton, exportButton);
-            DOMHelpers.appendChildren(subsection, managementTitle, managementButtons);
+            syncButton.disabled = true;
+            syncButton.style.opacity = '0.5';
+            syncButton.style.cursor = 'not-allowed';
+            syncButton.title = 'Sync not available in local mode';
         }
+
+        DOMHelpers.appendChildren(subsection, syncTitle, syncButton);
 
         return subsection;
     }
@@ -199,7 +178,7 @@ export class SettingsManager {
         this.advancedExpanded = !this.advancedExpanded;
         const content = document.getElementById('advanced-content');
         const chevron = document.querySelector('.chevron');
-        
+
         if (this.advancedExpanded) {
             content.classList.add('expanded');
             chevron.classList.add('expanded');
@@ -209,51 +188,6 @@ export class SettingsManager {
         }
     }
 
-    async ShowDatabasePicker() {
-        this.modalBody.innerHTML = '<p class="settings-loading">Loading databases...</p>';
-
-        const databases = await this.driveService.ListDatabaseFiles();
-        this.modalBody.innerHTML = '';
-
-        const backButton = DOMHelpers.createButton('← Back', 'action-button secondary', () => this.Render());
-        const title = DOMHelpers.createText('h3', 'Select Database', 'settings-section-title');
-
-        DOMHelpers.appendChildren(this.modalBody, backButton, title);
-
-        if (databases.length === 0) {
-            const emptyMessage = DOMHelpers.createText('p', 'No database files found in Google Drive', 'empty-state');
-            this.modalBody.appendChild(emptyMessage);
-            return;
-        }
-
-        const list = DOMHelpers.createContainer('database-list');
-
-        databases.forEach(db => {
-            const item = DOMHelpers.createContainer('database-item');
-            const info = DOMHelpers.createContainer('database-info');
-
-            const name = DOMHelpers.createText('div', db.name, 'database-name');
-            const modified = DOMHelpers.createText(
-                'div',
-                new Date(db.modifiedTime).toLocaleDateString(),
-                'database-modified'
-            );
-
-            DOMHelpers.appendChildren(info, name, modified);
-
-            const selectBtn = DOMHelpers.createButton(
-                'Select',
-                'control-button',
-                () => this.SelectDatabase(db.id, db.name)
-            );
-
-            DOMHelpers.appendChildren(item, info, selectBtn);
-            list.appendChild(item);
-        });
-
-        this.modalBody.appendChild(list);
-    }
-
     async SelectDatabase(fileId, fileName) {
         const confirmed = await this.dialog.Confirm(
             `Switch to database "${fileName}"? The application will reload.`
@@ -261,20 +195,6 @@ export class SettingsManager {
 
         if (confirmed) {
             await this.preferencesService.SetFile(FileType.DATABASE, fileId, fileName);
-            this.Hide();
-            if (this.onDatabaseChanged) {
-                this.onDatabaseChanged();
-            }
-        }
-    }
-
-    async ResetToDefault() {
-        const confirmed = await this.dialog.Confirm(
-            'Reset to default database? The application will reload.'
-        );
-
-        if (confirmed) {
-            await this.preferencesService.ClearDatabasePreference();
             this.Hide();
             if (this.onDatabaseChanged) {
                 this.onDatabaseChanged();

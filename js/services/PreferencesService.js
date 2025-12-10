@@ -20,21 +20,6 @@ export class PreferencesService {
         };
     }
 
-    async downloadPreferences(fileId) {
-        try {
-            const stored = localStorage.getItem(fileId);
-            if (stored) {
-                this.preferences = JSON.parse(stored);
-            } else {
-                this.InitializeDefaultDatabase();
-            }
-            return this.preferences;
-        } catch (error) {
-            console.error('Failed to load local preferences:', error);            
-            return { };
-        }
-    }
-
     async LoadPreferences() {
         try {
             this.preferences = this.GetLocalPreferences();
@@ -141,16 +126,6 @@ export class PreferencesService {
     async SetDatabaseSequenceNumber(seqNumber) {
         this.preferences.databaseSequenceNumber = seqNumber;
         return await this.SavePreferences(true);
-    }
-
-    HasCustomDatabase() {
-        return this.preferences.files[FileType.DATABASE].id !== null;
-    }
-
-    async ClearDatabasePreference() {
-        this.preferences.files[FileType.DATABASE].id = null;
-        this.preferences.files[FileType.DATABASE].name = 'passengers.db';
-        return await this.SavePreferences();
     }
 
     GetTheme() {
