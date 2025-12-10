@@ -70,7 +70,12 @@ export class GoogleDriveService {
         await this.EnsureFolderExists();
         if (!this.folderId) return null;
 
-        const query = `name='${name}' and '${this.folderId}' in parents and trashed=false`;
+        const query =
+            `name='${name}' and ` +
+            `'${this.folderId}' in parents and ` +
+            `appProperties has { key='app' and value='BusPassengerNotes' } and ` +
+            `trashed=false`;
+
         const response = await this.AuthenticatedFetch(
             `${this.driveApiBase}?q=${encodeURIComponent(query)}&spaces=drive&fields=files(id,name)`
         );
@@ -136,11 +141,24 @@ export class GoogleDriveService {
         await this.EnsureFolderExists();
         if (!this.folderId) return false;
 
+        if(fileId) {
+            const id = await this.FindFileInFolder(fileName);
+
+            if (!id) fileId = null;
+            else fileId = id;
+        }
+
         const metadata = {
             name: fileName,
             mimeType: mimeType,
-            parents: [this.folderId]
+            appProperties: {
+                app: 'BusPassengerNotes'
+            }
         };
+
+        if (this.folderId && !fileId) {
+            metadata.parents = [this.folderId];
+        }
 
         let response;
         if (isBuffer) {
@@ -166,15 +184,18 @@ export class GoogleDriveService {
             );
         }
 
+        if (!response?.ok) {
+            let err = null;
+            try { err = await response.json(); } catch {}
+            console.error('Drive upload error:', response.status, err);
+        }
+        else console.log('GoogleDrive: File uploaded', fileName, fileId ? `(updated ${fileId})` : '(new)');
+
         return response?.ok || false;
     }
 
-    async UploadDatabase(databaseBuffer, fileId = null) {
-        return await this.UploadFile(databaseBuffer, this.databaseFileName, this.sqliteMimeType, fileId, true);
-    }
-
-    async SyncDatabase(databaseBuffer) {
-        return await this.UploadDatabase(databaseBuffer);
+    async UploadDatabase(databaseBuffer, fileName, fileId = null) {
+        return await this.UploadFile(databaseBuffer, fileName, this.sqliteMimeType, fileId, true);
     }
 
     async UploadJsonFile(content, fileName, fileId = null) {

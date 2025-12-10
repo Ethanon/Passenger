@@ -53,7 +53,7 @@ export class DataStoreService {
             if (this.pendingSync) {
                 await this.SyncToCloud();
             }
-        }, 30000);
+        }, 10000);
     }
 
     StopBackgroundSync() {
@@ -68,7 +68,7 @@ export class DataStoreService {
         if (databaseBuffer.length === 0) return false;
 
         const dbFile = this.preferences.GetFile(FileType.DATABASE);
-        const dbSuccess = await this.drive.SyncDatabase(databaseBuffer);
+        const dbSuccess = await this.drive.UploadDatabase(databaseBuffer, dbFile.name, dbFile.id);
 
         if (!dbSuccess) {
             this.pendingSync = true;
@@ -81,7 +81,7 @@ export class DataStoreService {
         }
 
         const csvFile = this.preferences.GetFile(FileType.CSV);
-        const csvSuccess = await this.drive.UploadCsvFile(this.database.ExportNotesToCSV(), csvFile.id, csvFile.name);
+        const csvSuccess = await this.drive.UploadCsvFile(this.database.ExportNotesToCSV(), csvFile.name, csvFile.id);
 
         if (csvSuccess && !csvFile.id) {
             const newCsvFileId = await this.drive.FindFileInFolder(csvFile.name);
