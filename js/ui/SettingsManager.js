@@ -66,15 +66,22 @@ export class SettingsManager {
 
     RenderDataExportSection() {
         this.modalBody.appendChild(DOMHelpers.createDivider());
-        
-        const { section } = DOMHelpers.createSection('Data Export');
+
+        const { section } = DOMHelpers.createSection('Data Management');
+
+        const importButton = DOMHelpers.createButton(
+            'Import Database Records',
+            'action-button import-records-button',
+            () => this.ImportDatabaseRecords()
+        );
+
         const exportButton = DOMHelpers.createButton(
             'Export Notes to CSV',
             'action-button export-csv-button',
             () => this.ExportNotesToCSV()
         );
-        
-        section.appendChild(exportButton);
+
+        DOMHelpers.appendChildren(section, importButton, exportButton);
         this.modalBody.appendChild(section);
     }
 
@@ -188,60 +195,31 @@ export class SettingsManager {
         }
     }
 
-    async SelectDatabase(fileId, fileName) {
-        const confirmed = await this.dialog.Confirm(
-            `Switch to database "${fileName}"? The application will reload.`
-        );
-
-        if (confirmed) {
-            await this.preferencesService.SetFile(FileType.DATABASE, fileId, fileName);
-            this.Hide();
-            if (this.onDatabaseChanged) {
-                this.onDatabaseChanged();
-            }
+    async ImportDatabaseRecords() {
+        if (!this.databaseService) {
+            await this.dialog.Confirm('Database service not available');
+            return;
         }
-    }
 
-    async CreateNewDatabase() {
-        const name = await this.dialog.Prompt('Enter new database name:');
-        if (name) {
-            const key = await this.driveService.CreateNewDatabase(name);
-            if (key) {
-                await this.SelectDatabase(key, name);
-            }
-        }
-    }
-
-    async ExportDatabase() {
-        const fileName = this.preferencesService.GetFile(FileType.DATABASE).name.replace(/\s+/g, '-') + '.db';
-        const success = this.driveService.ExportDatabaseFile(fileName);
-        if (success) {
-            await this.dialog.Confirm('Database exported successfully!');
-        }
-    }
-
-    async ImportDatabase() {
         const input = document.createElement('input');
         input.type = 'file';
         input.accept = '.db,.sqlite,.sqlite3';
-        
+
         input.onchange = async (e) => {
             const file = e.target.files[0];
-            if (file) {
-                const name = await this.dialog.Prompt('Enter name for imported database:', file.name.replace(/\.[^/.]+$/, ''));
-                if (name) {
-                    const key = await this.driveService.CreateNewDatabase(name);
-                    if (key) {
-                        this.driveService.UpdateStorageKey(key);
-                        const success = await this.driveService.ImportDatabaseFile(file);
-                        if (success) {
-                            await this.SelectDatabase(key, name);
-                        }
-                    }
-                }
+            if (!file) return;
+
+            const arrayBuffer = await file.arrayBuffer();
+            const success = await this.databaseService.ImportRecordsFromFile(arrayBuffer);
+
+            if (success) {
+                await this.dataStoreService.TriggerSync();
+                await this.dialog.Confirm('Records imported and synced successfully!');
+            } else {
+                await this.dialog.Confirm('Failed to import records. Invalid database file.');
             }
         };
-        
+
         input.click();
     }
 
@@ -252,7 +230,7 @@ export class SettingsManager {
         }
 
         const csvContent = this.databaseService.ExportNotesToCSV();
-        
+
         if (!csvContent || csvContent === 'Passenger Name,Date,Time of Day,Note,Created At,Updated At\n') {
             await this.dialog.Confirm('No notes found to export');
             return;
@@ -262,7 +240,7 @@ export class SettingsManager {
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
         const fileName = `bus-notes-${new Date().toISOString().split('T')[0]}.csv`;
-        
+
         link.href = url;
         link.download = fileName;
         document.body.appendChild(link);

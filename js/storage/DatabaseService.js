@@ -83,6 +83,71 @@ export class DatabaseService {
         // Implement schema migration logic here as needed
     }
 
+    async ImportRecordsFromFile(arrayBuffer) {
+        if (!this.isInitialized) return false;
+
+        if (!this.driveService.IsValidSQLite(arrayBuffer)) return false;
+
+        const jsSQL = await initSqlJs({ locateFile: file => `lib/${file}` });
+        const importedDB = new jsSQL.Database(new Uint8Array(arrayBuffer));
+
+        const passengerIdMap = new Map();
+
+        const importedPassengers = importedDB.exec('SELECT * FROM passengers');
+        if (importedPassengers.length > 0) {
+            importedPassengers[0].values.forEach(row => {
+                const [oldId, name, display_order, is_hidden, created_at] = row;
+
+                const existingMatch = this.db.exec('SELECT id FROM passengers WHERE name = ?', [name]);
+
+                if (existingMatch.length === 0) {
+                    this.db.run(
+                        'INSERT INTO passengers (name, display_order, is_hidden, created_at) VALUES (?, ?, ?, ?)',
+                        [name, display_order, is_hidden, created_at]
+                    );
+                    const newId = this.db.exec('SELECT last_insert_rowid()')[0].values[0][0];
+                    passengerIdMap.set(oldId, newId);
+                } else {
+                    passengerIdMap.set(oldId, existingMatch[0].values[0][0]);
+                }
+            });
+        }
+
+        const importedNotes = importedDB.exec('SELECT * FROM notes');
+        if (importedNotes.length > 0) {
+            importedNotes[0].values.forEach(row => {
+                const [, old_passenger_id, note_date, time_of_day, note_text, created_at, updated_at] = row;
+
+                const newPassengerId = passengerIdMap.get(old_passenger_id);
+                if (!newPassengerId) return;
+
+                const existingMatch = this.db.exec(
+                    'SELECT updated_at FROM notes WHERE passenger_id = ? AND note_date = ? AND time_of_day = ?',
+                    [newPassengerId, note_date, time_of_day]
+                );
+
+                if (existingMatch.length === 0) {
+                    this.db.run(
+                        'INSERT INTO notes (passenger_id, note_date, time_of_day, note_text, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)',
+                        [newPassengerId, note_date, time_of_day, note_text, created_at, updated_at]
+                    );
+                } else {
+                    const localUpdatedAt = existingMatch[0].values[0][0];
+                    if (updated_at > localUpdatedAt) {
+                        this.db.run(
+                            'UPDATE notes SET note_text = ?, updated_at = ? WHERE passenger_id = ? AND note_date = ? AND time_of_day = ?',
+                            [note_text, updated_at, newPassengerId, note_date, time_of_day]
+                        );
+                    }
+                }
+            });
+        }
+
+        importedDB.close();
+        this.PersistToLocalStorage();
+        return true;
+    }
+
     async MergeDatabases(jsSQL, localBuffer) {
         const localDB = new jsSQL.Database(new Uint8Array(localBuffer));
 
