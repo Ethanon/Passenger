@@ -127,7 +127,13 @@ export class GoogleDriveService {
     }
 
     ArrayBufferToBase64(buffer) {
-        return btoa(String.fromCharCode(...new Uint8Array(buffer)));
+        const bytes = new Uint8Array(buffer);
+        const chunkSize = 8192;
+        let binary = '';
+        for (let i = 0; i < bytes.length; i += chunkSize) {
+            binary += String.fromCharCode(...bytes.slice(i, i + chunkSize));
+        }
+        return btoa(binary);
     }
 
     BuildMultipartBody(boundary, metadata, buffer) {
