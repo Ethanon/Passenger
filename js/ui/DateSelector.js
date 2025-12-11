@@ -4,10 +4,6 @@ export class DateSelector {
         this.prevButton = document.getElementById('prev-day-button');
         this.nextButton = document.getElementById('next-day-button');
         this.onDateChanged = onDateChanged;
-        this.Initialize();
-    }
-
-    Initialize() {
         this.SetToday();
         this.dateInput.addEventListener('change', () => this.onDateChanged?.(this.GetSelectedDate()));
         this.prevButton?.addEventListener('click', () => this.ChangeDay(-1));

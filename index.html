@@ -51,6 +51,13 @@
                 </div>
                 <div class="sync-status">
                     <span id="sync-indicator" class="sync-indicator"></span>
+                    <button id="error-log-button" class="icon-button error-log-button hidden" title="View error log">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <line x1="12" y1="16" x2="12" y2="12"></line>
+                            <line x1="12" y1="8" x2="12.01" y2="8"></line>
+                        </svg>
+                    </button>
                 </div>
             </header>
 
@@ -70,6 +77,22 @@
                         <button id="show-hidden-button" class="action-button">Show Hidden Passengers</button>
                     </div>
                     <div id="passenger-manager-list" class="passenger-manager-list">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="error-log-modal" class="modal hidden">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2>Error Log</h2>
+                    <button id="close-error-modal" class="close-button">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="error-log-actions">
+                        <button id="email-errors-button" class="action-button">Submit Bug</button>
+                    </div>
+                    <div id="error-log-list" class="error-log-list">
                     </div>
                 </div>
             </div>

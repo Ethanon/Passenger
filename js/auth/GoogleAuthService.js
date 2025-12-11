@@ -1,3 +1,5 @@
+import { ErrorLogger } from '../utils/ErrorLogger.js';
+
 export class GoogleAuthService {
     constructor() {
         this.clientId = '';
@@ -71,7 +73,7 @@ export class GoogleAuthService {
 
     RequestToken() {
         if (!this.tokenClient) {
-            console.error('GoogleAuth: Token client not initialized');
+            ErrorLogger.Log('GoogleAuth', 'Token client not initialized');
             return;
         }
         
@@ -80,7 +82,7 @@ export class GoogleAuthService {
 
     HandleTokenResponse(response) {
         if (response.error) {
-            console.error('GoogleAuth: Token error', response.error);
+            ErrorLogger.Log('GoogleAuth', 'Token error', { error: response.error });
             return;
         }
 

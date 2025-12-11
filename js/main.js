@@ -11,6 +11,7 @@ import { PassengerList } from './ui/PassengerList.js';
 import { PassengerManager } from './ui/PassengerManager.js';
 import { SettingsManager } from './ui/SettingsManager.js';
 import { ThemeManager } from './ui/ThemeManager.js';
+import { ErrorLogger } from './utils/ErrorLogger.js';
 
 class Application {
     constructor() {
@@ -27,6 +28,66 @@ class Application {
         this.settingsManager = null;
         this.isAuthenticated = false;
         this.syncIndicator = document.getElementById('sync-indicator');
+        this.errorLogButton = document.getElementById('error-log-button');
+        this.errorLogModal = document.getElementById('error-log-modal');
+        this.SetupErrorLog();
+    }
+
+    SetupErrorLog() {
+        this.errorLogButton?.addEventListener('click', () => this.ShowErrorLog());
+        document.getElementById('close-error-modal')?.addEventListener('click', () => this.HideErrorLog());
+        document.getElementById('email-errors-button')?.addEventListener('click', () => this.EmailErrors());
+        this.errorLogModal?.addEventListener('click', (e) => {
+            if (e.target === this.errorLogModal) this.HideErrorLog();
+        });
+    }
+
+    EmailErrors() {
+        const errors = ErrorLogger.GetErrors();
+        const subject = encodeURIComponent('Bus Passenger Notes - Error Report');
+        const body = encodeURIComponent(
+            `Hi,\n\nI encountered the following errors:\n\n` +
+            `Device: ${navigator.userAgent}\n` +
+            `Date: ${new Date().toLocaleString()}\n\n` +
+            `Errors:\n${errors.map((err, i) =>
+                `\n${i + 1}. [${err.source}] ${err.message}\n` +
+                `   Time: ${new Date(err.timestamp).toLocaleString()}\n` +
+                (err.details ? `   Details: ${JSON.stringify(err.details, null, 2)}\n` : '')
+            ).join('\n')}`
+        );
+        window.location.href = `mailto:jtmcduffie@gmail.com?subject=${subject}&body=${body}`;
+    }
+
+    ShowErrorLog() {
+        const errorList = document.getElementById('error-log-list');
+        const errors = ErrorLogger.GetErrors();
+
+        errorList.innerHTML = errors.length === 0
+            ? '<p style="text-align: center; color: rgba(255, 255, 255, 0.6);">No errors logged</p>'
+            : errors.map(err => `
+                <div class="error-log-item">
+                    <div class="error-log-header">
+                        <span class="error-log-source">${err.source}</span>
+                        <span>${new Date(err.timestamp).toLocaleString()}</span>
+                    </div>
+                    <div class="error-log-message">${err.message}</div>
+                    ${err.details ? `<div class="error-log-details">${JSON.stringify(err.details, null, 2)}</div>` : ''}
+                </div>
+            `).join('');
+
+        this.errorLogModal.classList.remove('hidden');
+    }
+
+    HideErrorLog() {
+        this.errorLogModal.classList.add('hidden');
+    }
+
+    UpdateErrorIndicator() {
+        if (ErrorLogger.HasErrors()) {
+            this.errorLogButton.classList.remove('hidden');
+        } else {
+            this.errorLogButton.classList.add('hidden');
+        }
     }
 
     async Initialize() {
@@ -151,6 +212,7 @@ class Application {
 
     StartSyncStatusMonitoring() {
         setInterval(() => {
+            this.UpdateErrorIndicator();
             if (this.dataStoreService && this.dataStoreService.HasPendingChanges()) {
                 this.ShowSyncStatus('Syncing...');
             } else {
@@ -162,7 +224,7 @@ class Application {
     ShowSyncStatus(status) {
         this.syncIndicator.textContent = status;
         this.syncIndicator.className = 'sync-indicator';
-        
+
         if (status === 'Synced') {
             this.syncIndicator.classList.add('synced');
         } else if (status === 'Syncing...') {

@@ -1,3 +1,5 @@
+import { ErrorLogger } from '../utils/ErrorLogger.js';
+
 export class GoogleDriveService {
     constructor(authService) {
         this.authService = authService;
@@ -8,7 +10,6 @@ export class GoogleDriveService {
         this.preferencesFileName = 'preferences.json';
         this.driveApiBase = 'https://www.googleapis.com/drive/v3/files';
         this.driveUploadBase = 'https://www.googleapis.com/upload/drive/v3/files';
-        this.multipartBoundary = '-------314159265358979323846';
         this.sqliteMimeType = 'application/octet-stream';
         this.jsonMimeType = 'application/json';
         this.csvMimeType = 'text/csv';
@@ -18,10 +19,10 @@ export class GoogleDriveService {
     async AuthenticatedFetch(url, options = {}) {
         const token = await this.authService.GetAccessToken();
         if (!token) {
-            console.error('GoogleDrive: No access token');
+            ErrorLogger.Log('GoogleDrive', 'No access token available', { url });
             return null;
         }
-        
+
         return await fetch(url, {
             ...options,
             headers: { 'Authorization': `Bearer ${token}`, ...options.headers }
@@ -58,7 +59,7 @@ export class GoogleDriveService {
         );
 
         if (!createResponse?.ok) {
-            console.error('GoogleDrive: Folder creation failed', createResponse.status);
+            ErrorLogger.Log('GoogleDrive', 'Folder creation failed', { status: createResponse.status });
             return false;
         }
         const createData = await createResponse.json();
@@ -119,37 +120,19 @@ export class GoogleDriveService {
         }
 
         if (!this.IsValidSQLite(buffer)) {
-            console.error('GoogleDrive: Invalid SQLite file', { fileId, size: buffer.byteLength });
+            ErrorLogger.Log('GoogleDrive', 'Invalid SQLite file downloaded', { fileId: databaseFileId, size: buffer.byteLength });
             return null;
         }
 
         return buffer;
     }
 
-    ArrayBufferToBase64(buffer) {
-        const bytes = new Uint8Array(buffer);
-        const chunkSize = 8192;
-        let binary = '';
-        for (let i = 0; i < bytes.length; i += chunkSize) {
-            binary += String.fromCharCode(...bytes.slice(i, i + chunkSize));
-        }
-        return btoa(binary);
-    }
-
-    BuildMultipartBody(boundary, metadata, buffer) {
-        return `\r\n--${boundary}\r\n` +
-               `Content-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n--${boundary}\r\n` +
-               `Content-Type: application/octet-stream\r\nContent-Transfer-Encoding: base64\r\n\r\n` +
-               `${this.ArrayBufferToBase64(buffer)}\r\n--${boundary}--`;
-    }
-
-    async UploadFile(content, fileName, mimeType, fileId = null, isBuffer = false) {
+    async UploadFile(content, fileName, mimeType, fileId = null) {
         await this.EnsureFolderExists();
         if (!this.folderId) return false;
 
         if(fileId) {
             const id = await this.FindFileInFolder(fileName);
-
             if (!id) fileId = null;
             else fileId = id;
         }
@@ -166,42 +149,29 @@ export class GoogleDriveService {
             metadata.parents = [this.folderId];
         }
 
-        let response;
-        if (isBuffer) {
-            response = await this.AuthenticatedFetch(
-                `${this.driveUploadBase}${fileId ? `/${fileId}` : ''}?uploadType=multipart`,
-                {
-                    method: fileId ? 'PATCH' : 'POST',
-                    headers: { 'Content-Type': `multipart/related; boundary=${this.multipartBoundary}` },
-                    body: this.BuildMultipartBody(this.multipartBoundary, metadata, content)
-                }
-            );
-        } else {
-            const form = new FormData();
-            form.append('metadata', new Blob([JSON.stringify(metadata)], { type: this.jsonMimeType }));
-            form.append('file', new Blob([content], { type: mimeType }));
+        const form = new FormData();
+        form.append('metadata', new Blob([JSON.stringify(metadata)], { type: this.jsonMimeType }));
+        form.append('file', new Blob([content], { type: mimeType }));
 
-            response = await this.AuthenticatedFetch(
-                `${this.driveUploadBase}${fileId ? `/${fileId}` : ''}?uploadType=multipart`,
-                {
-                    method: fileId ? 'PATCH' : 'POST',
-                    body: form
-                }
-            );
-        }
+        const response = await this.AuthenticatedFetch(
+            `${this.driveUploadBase}${fileId ? `/${fileId}` : ''}?uploadType=multipart`,
+            {
+                method: fileId ? 'PATCH' : 'POST',
+                body: form
+            }
+        );
 
         if (!response?.ok) {
             let err = null;
             try { err = await response.json(); } catch {}
-            console.error('Drive upload error:', response.status, err);
+            ErrorLogger.Log('GoogleDrive', `Upload failed: ${fileName}`, { status: response.status, error: err });
         }
-        else console.log('GoogleDrive: File uploaded', fileName, fileId ? `(updated ${fileId})` : '(new)');
 
         return response?.ok || false;
     }
 
     async UploadDatabase(databaseBuffer, fileName, fileId = null) {
-        return await this.UploadFile(databaseBuffer, fileName, this.sqliteMimeType, fileId, true);
+        return await this.UploadFile(databaseBuffer, fileName, this.sqliteMimeType, fileId);
     }
 
     async UploadJsonFile(content, fileName, fileId = null) {

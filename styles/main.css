@@ -337,7 +337,9 @@ body {
 
 .sync-status {
     display: flex;
+    align-items: center;
     justify-content: flex-end;
+    gap: 8px;
 }
 
 .sync-indicator {
@@ -352,6 +354,55 @@ body {
 
 .sync-indicator.syncing {
     color: rgba(255, 255, 255, 0.8);
+}
+
+.error-log-button {
+    color: #ff6b6b;
+}
+
+.error-log-actions {
+    margin-bottom: 16px;
+}
+
+.error-log-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.error-log-item {
+    background: var(--surface);
+    padding: 12px;
+    border-radius: 8px;
+    border-left: 3px solid #ff6b6b;
+}
+
+.error-log-header {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 8px;
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.6);
+}
+
+.error-log-source {
+    font-weight: 600;
+    color: #ff6b6b;
+}
+
+.error-log-message {
+    margin-bottom: 4px;
+    font-weight: 500;
+}
+
+.error-log-details {
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.7);
+    font-family: monospace;
+    white-space: pre-wrap;
+    word-break: break-all;
 }
 
 .passenger-list-container {

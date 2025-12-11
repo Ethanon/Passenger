@@ -1,6 +1,7 @@
 import { Passenger } from '../models/Passenger.js';
 import { Note } from '../models/Note.js';
 import { FileType } from '../constants/FileTypes.js';
+import { ErrorLogger } from '../utils/ErrorLogger.js';
 
 export class DatabaseService {
     constructor(driveService, preferencesService) {
@@ -225,7 +226,7 @@ export class DatabaseService {
                 }))
                 : [];
         } catch (error) {
-            console.error('Failed to get passengers:', error);
+            ErrorLogger.Log('Database', 'Failed to get passengers', { error: error.message });
             return [];
         }
     }
@@ -245,7 +246,7 @@ export class DatabaseService {
                 }))
                 : [];
         } catch (error) {
-            console.error('Failed to get active passengers:', error);
+            ErrorLogger.Log('Database', 'Failed to get active passengers', { error: error.message });
             return [];
         }
     }
@@ -268,7 +269,7 @@ export class DatabaseService {
 
             return new Passenger(passengerId, name, nextOrder, false);
         } catch (error) {
-            console.error('Failed to add passenger:', error);
+            ErrorLogger.Log('Database', 'Failed to add passenger', { name, error: error.message });
             return null;
         }
     }
@@ -286,7 +287,7 @@ export class DatabaseService {
 
             return true;
         } catch (error) {
-            console.error('Failed to update passenger:', error);
+            ErrorLogger.Log('Database', 'Failed to update passenger', { passengerId, error: error.message });
             return false;
         }
     }
@@ -312,7 +313,7 @@ export class DatabaseService {
                 }))
                 : [];
         } catch (error) {
-            console.error('Failed to get notes:', error);
+            ErrorLogger.Log('Database', 'Failed to get notes', { date, timeOfDay, error: error.message });
             return [];
         }
     }
@@ -334,7 +335,7 @@ export class DatabaseService {
 
             return true;
         } catch (error) {
-            console.error('Failed to save note:', error);
+            ErrorLogger.Log('Database', 'Failed to save note', { passengerId, date, timeOfDay, error: error.message });
             return false;
         }
     }
@@ -345,7 +346,7 @@ export class DatabaseService {
         try {
             return this.db.export();
         } catch (error) {
-            console.error('Failed to export database:', error);
+            ErrorLogger.Log('Database', 'Failed to export database', { error: error.message });
             return new Uint8Array(0);
         }
     }
@@ -391,7 +392,7 @@ export class DatabaseService {
 
             return '\uFEFF' + csv;
         } catch (error) {
-            console.error('Failed to export notes to CSV:', error);
+            ErrorLogger.Log('Database', 'Failed to export notes to CSV', { error: error.message });
             return '';
         }
     }
