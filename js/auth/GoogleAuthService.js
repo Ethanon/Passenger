@@ -151,6 +151,17 @@ export class GoogleAuthService {
         setTimeout(() => this.RenderButton(), 100);
     }
 
+    async GetUserInfo() {
+        const token = await this.GetAccessToken();
+        if (!token) return null;
+
+        const response = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+
+        return response.ok ? await response.json() : null;
+    }
+
     GetAuthState() {
         return {
             isAuthenticated: this.IsAuthenticated(),

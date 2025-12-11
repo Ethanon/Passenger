@@ -100,7 +100,8 @@ class Application {
             this.dataStoreService,
             () => this.ReloadApplication(),
             AppConfig.useLocalStorage,
-            this.databaseService
+            this.databaseService,
+            this.authService
         );
 
         if (isLocal) {

@@ -5,13 +5,14 @@ import { ThemeManager } from './ThemeManager.js';
 import { FileType } from '../constants/FileTypes.js';
 
 export class SettingsManager {
-    constructor(preferencesService, driveService, dataStoreService, onDatabaseChanged, isLocalMode = false, databaseService = null) {
+    constructor(preferencesService, driveService, dataStoreService, onDatabaseChanged, isLocalMode = false, databaseService = null, authService = null) {
         this.preferencesService = preferencesService;
         this.driveService = driveService;
         this.dataStoreService = dataStoreService;
         this.onDatabaseChanged = onDatabaseChanged;
         this.isLocalMode = isLocalMode;
         this.databaseService = databaseService;
+        this.authService = authService;
         this.dialog = new Dialog();
         this.modalBuilder = new ModalBuilder();
         this.themeManager = new ThemeManager(preferencesService);
@@ -38,6 +39,11 @@ export class SettingsManager {
     async Render() {
         this.modalBody.innerHTML = '';
 
+        // User Info Section
+        if (this.authService && !this.isLocalMode) {
+            await this.RenderUserInfoSection();
+        }
+
         // Appearance Section with Theme
         this.RenderAppearanceSection();
 
@@ -53,14 +59,31 @@ export class SettingsManager {
         this.RenderInfoSection();
     }
 
+    async RenderUserInfoSection() {
+        const userInfo = await this.authService.GetUserInfo();
+        if (!userInfo) return;
+
+        const { section } = DOMHelpers.createSection('Account');
+
+        const userEmail = DOMHelpers.createText('p', userInfo.email, 'settings-value');
+        if (userInfo.name) {
+            const userName = DOMHelpers.createText('p', userInfo.name, 'settings-label');
+            DOMHelpers.appendChildren(section, userName, userEmail);
+        } else {
+            section.appendChild(userEmail);
+        }
+
+        this.modalBody.appendChild(section);
+    }
+
     RenderAppearanceSection() {
         const { section } = DOMHelpers.createSection('Appearance');
         const { subsection } = DOMHelpers.createSubsection('Theme');
-        
+
         const themeSelector = this.themeManager.CreateThemeSelector();
         subsection.appendChild(themeSelector);
         section.appendChild(subsection);
-        
+
         this.modalBody.appendChild(section);
     }
 
@@ -215,6 +238,10 @@ export class SettingsManager {
             if (success) {
                 await this.dataStoreService.TriggerSync();
                 await this.dialog.Confirm('Records imported and synced successfully!');
+                this.Hide();
+                if (this.onDatabaseChanged) {
+                    this.onDatabaseChanged();
+                }
             } else {
                 await this.dialog.Confirm('Failed to import records. Invalid database file.');
             }
