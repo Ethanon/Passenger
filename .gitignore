@@ -1,0 +1,14 @@
+# Deployment scripts (local only, contains credentials)
+deploy.ps1
+deploy*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~

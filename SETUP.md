@@ -44,6 +44,14 @@ These are automatically requested during the OAuth flow.
 
 ### 4. Deploy the Application
 
+#### Automated Deployment (Recommended)
+
+1. Create a local `deploy.ps1` file with your WebDAV credentials (not checked into Git)
+2. Run `.\deploy.ps1` to automatically deploy to your server
+3. The script will sync all files to your web hosting service
+
+#### Manual Deployment
+
 Upload all files to your web hosting service:
 
 ```

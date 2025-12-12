@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(start:*)",
-      "Bash(dir:*)"
+      "Bash(dir:*)",
+      "Bash(findstr:*)"
     ],
     "deny": [],
     "ask": []

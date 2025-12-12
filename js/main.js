@@ -40,6 +40,7 @@ class Application {
         this.errorLogModal?.addEventListener('click', (e) => {
             if (e.target === this.errorLogModal) this.HideErrorLog();
         });
+        this.errorLogButton?.classList.add('no-errors');
     }
 
     EmailErrors() {
@@ -60,11 +61,14 @@ class Application {
 
     ShowErrorLog() {
         const errorList = document.getElementById('error-log-list');
+        const emailButton = document.getElementById('email-errors-button');
         const errors = ErrorLogger.GetErrors();
 
-        errorList.innerHTML = errors.length === 0
-            ? '<p style="text-align: center; color: rgba(255, 255, 255, 0.6);">No errors logged</p>'
-            : errors.map(err => `
+        if (errors.length === 0) {
+            errorList.innerHTML = '<p style="text-align: center; color: rgba(255, 255, 255, 0.6);">No error message</p>';
+            emailButton.style.display = 'none';
+        } else {
+            errorList.innerHTML = errors.map(err => `
                 <div class="error-log-item">
                     <div class="error-log-header">
                         <span class="error-log-source">${err.source}</span>
@@ -74,6 +78,8 @@ class Application {
                     ${err.details ? `<div class="error-log-details">${JSON.stringify(err.details, null, 2)}</div>` : ''}
                 </div>
             `).join('');
+            emailButton.style.display = 'block';
+        }
 
         this.errorLogModal.classList.remove('hidden');
     }
@@ -84,9 +90,11 @@ class Application {
 
     UpdateErrorIndicator() {
         if (ErrorLogger.HasErrors()) {
-            this.errorLogButton.classList.remove('hidden');
+            this.errorLogButton.classList.remove('no-errors');
+            this.errorLogButton.classList.add('has-errors');
         } else {
-            this.errorLogButton.classList.add('hidden');
+            this.errorLogButton.classList.remove('has-errors');
+            this.errorLogButton.classList.add('no-errors');
         }
     }
 

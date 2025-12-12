@@ -356,7 +356,11 @@ body {
     color: rgba(255, 255, 255, 0.8);
 }
 
-.error-log-button {
+.error-log-button.no-errors {
+    color: #51cf66;
+}
+
+.error-log-button.has-errors {
     color: #ff6b6b;
 }
 
